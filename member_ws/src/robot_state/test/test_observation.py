@@ -1,21 +1,34 @@
+"""Validation and freshness rules, exercised without a running ROS graph.
+
+These drive `Observation` directly with a synthetic clock, so a test can
+step time forward by ten thousand seconds and assert what a latched input
+does, which is not something a wall-clock integration test can pin down.
+"""
+
 import copy
 
 from builtin_interfaces.msg import Time
 from geometry_msgs.msg import TransformStamped
 import pytest
 from rclpy.serialization import deserialize_message, serialize_message
-from robot_state.observation import INPUTS, KNOWN_JOINTS, Observation
+from robot_state.config import INPUTS, KNOWN_JOINTS
+from robot_state.observation import Observation
 from sensor_msgs.msg import CameraInfo, Image, JointState
 from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
 
 
 def stamp(value=10.0):
+    """Build a Time from fractional seconds; 10.0 is the default "now".
+
+    Tests pass a different value to move the clock rather than to wait.
+    """
     ns = round(value * 10**9)
     return Time(sec=ns // 10**9, nanosec=ns % 10**9)
 
 
 def message(name):
+    """Build a minimal valid message for one input, for tests to then corrupt."""
     if name == 'joints':
         msg = JointState(name=list(KNOWN_JOINTS), position=[0., 1., 2., 3., 4.],
                          velocity=[5., 6., 7., 8., 9.])
@@ -67,6 +80,10 @@ def test_round_trip_and_independent_snapshots(name):
 
 @pytest.mark.parametrize('name', ['joints', 'image', 'tf'])
 def test_stale_retains_value_and_source_stamp(name):
+    """Going stale must not discard the data, only relabel it.
+
+    A consumer deciding whether to act on old data needs to see the data.
+    """
     observation = observe(name)
     fresh = observation.snapshot(stamp())
     stale = observation.snapshot(stamp(11))
@@ -90,6 +107,7 @@ def test_unstamped_key_uses_receive_time_without_inventing_source_stamp():
 
 
 def test_joints_reordered_by_name_and_owned():
+    """Positions follow KNOWN_JOINTS order, and are copied out of the input."""
     msg = message('joints')
     msg.name.reverse()
     observation = observe('joints', msg)
@@ -192,6 +210,11 @@ def test_freshness_boundary():
 
 
 def test_update_rate_and_recovery():
+    """Rate health tracks the stream: good, then degraded, then good again.
+
+    The recovery half matters most -- a rate problem has to clear on its
+    own once the publisher catches up, without restarting the node.
+    """
     observation = Observation('joints')
     for i in range(60):
         msg = message('joints')
@@ -222,6 +245,7 @@ def test_duplicate_receive_times_do_not_divide_by_zero():
 
 
 def test_invalid_latest_replaces_previous_value():
+    """A bad message wins over a good older one, flagged rather than hidden."""
     observation = observe('launch_key')
     observation.update(String(data='bad'), stamp(11))
     result = observation.snapshot(stamp(11))

@@ -1,3 +1,10 @@
+"""The node's public contract, exercised over a real ROS graph.
+
+Runs on an isolated domain id, once with the node in this process and once
+with it spawned as a separate process, so the same assertions have to hold
+whether or not the messages cross a DDS boundary.
+"""
+
 from collections import Counter
 from functools import partial
 import os
@@ -12,8 +19,8 @@ from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.time import Time
-from robot_state.observation import INPUTS, KNOWN_JOINTS
-from robot_state.state_node import LATCHED, StateNode, TOPIC_SPECS
+from robot_state.config import INPUTS, KNOWN_JOINTS, LATCHED
+from robot_state.state_node import StateNode
 from robot_state_interfaces.srv import GetRobotState
 from test_observation import message
 
@@ -29,6 +36,14 @@ def spin_until(executor, predicate, timeout=10):
 
 @pytest.mark.parametrize('separate_process', [False, True])
 def test_live_query_latching_staleness_and_tf(separate_process):
+    """One episode: inputs arrive, go stale, recover.
+
+    Deliberately a single test rather than six. The behaviours it checks
+    are sequential states of one live node -- latched values surviving a
+    stall, staleness being announced exactly once, an invalid message
+    replacing a valid one -- and splitting them would mean standing a
+    node up six times to re-reach the same states.
+    """
     context = Context()
     rclpy.init(context=context, domain_id=91)
     probe = Node('state_contract_probe', context=context)
@@ -42,8 +57,11 @@ def test_live_query_latching_staleness_and_tf(separate_process):
     publishers = {}
     timers = []
     try:
-        for name, (kind, qos) in TOPIC_SPECS.items():
-            publishers[name] = probe.create_publisher(kind, INPUTS[name][1], qos)
+        for name, spec in INPUTS.items():
+            publishers[name] = probe.create_publisher(
+                spec.ros_type, spec.topic, spec.qos)
+        # Published before the node exists: transient-local QoS means it
+        # still has to receive them once it subscribes.
         for name in ('calibration', 'launch_key', 'tf_static'):
             publishers[name].publish(message(name))
         if separate_process:
@@ -57,6 +75,8 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             assert all(not getattr(initial, name).status.arrived for name in INPUTS)
 
             def local_callback(name, value):
+                # Mutating what we receive proves each consumer gets its
+                # own copy: the node's state must survive this.
                 local_updates[name] = value
                 value.status.source = 'modified by consumer'
 
@@ -67,7 +87,8 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             counts[name] += 1
 
         subscriptions = [probe.create_subscription(
-            spec[0], f'/robot_state/updates/{name}', partial(receive, name), LATCHED)
+            spec.observation, f'/robot_state/updates/{name}',
+            partial(receive, name), LATCHED)
             for name, spec in INPUTS.items()]
         client = probe.create_client(GetRobotState, '/robot_state/get_state')
         assert client.wait_for_service(timeout_sec=10)
@@ -110,6 +131,8 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             assert adapter.tf_buffer.lookup_transform('world', 'camera', Time())
         for timer in timers:
             timer.cancel()
+        # Timers are cancelled, so the only thing that can publish now is
+        # the health tick noticing the inputs have gone stale.
         counts_before_stale = counts.copy()
         spin_until(executor, lambda: all(
             not updates[name].status.fresh for name in ('joints', 'image', 'tf')))
@@ -117,9 +140,12 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         deadline = time.monotonic() + .2
         while time.monotonic() < deadline:
             executor.spin_once(timeout_sec=.02)
+        # Exactly one publish per input for the transition, and nothing
+        # after it: staying stale is not an event.
         assert counts == stale_counts
         assert all(stale_counts[name] == counts_before_stale[name] + 1
                    for name in ('joints', 'image', 'tf'))
+        # Stale inputs keep their last value; latched ones never expire.
         stale = query()
         assert stale.joints.positions == state.joints.positions
         assert stale.image.pixels == state.image.pixels
