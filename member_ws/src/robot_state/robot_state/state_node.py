@@ -24,15 +24,21 @@ class StateNode(Node):
 
     def __init__(self, **kwargs):
         super().__init__('robot_state', **kwargs)
-        # One lock guards the observations, the callback list, and the health
-        # cache together, so a snapshot taken for the service cannot catch one
-        # input mid-update while another has already moved on.
+        # _lock guards the observations, so a snapshot taken for the service
+        # cannot catch one input mid-update while another has already moved on.
+        # Every snapshot leaves it carrying a sequence number, which is what
+        # lets _emit put concurrent snapshots back in order.
         self._lock = threading.RLock()
         self._observations = {name: Observation(name) for name in config.INPUTS}
-        self._callbacks = []
-        # Health as of the last thing we published per input, so the timer can
-        # tell a real transition from a tick where nothing changed.
+        self._sequence = 0
+        # Rebound rather than mutated, so _emit can read it without a lock.
+        self._callbacks: tuple = ()
+        # _emit_lock guards everything about publishing: the health and
+        # sequence of the last value sent per input, and the publish itself.
+        # It is never held while taking _lock, so the two cannot deadlock.
+        self._emit_lock = threading.Lock()
         self._last_health = {}
+        self._last_sequence = {}
         # Latched, so a consumer that starts after us immediately sees the
         # current value of every input instead of waiting for the next message.
         self._update_publishers = {
@@ -74,7 +80,7 @@ class StateNode(Node):
     def on_update(self, callback):
         """Register an in-process consumer, called with (name, observation)."""
         with self._lock:
-            self._callbacks.append(callback)
+            self._callbacks = self._callbacks + (callback,)
 
     def _query(self, request, response):
         response.state = self.get_state()
@@ -89,15 +95,28 @@ class StateNode(Node):
         """
         return (s.arrived, s.fresh, s.valid, s.rate_known, s.rate_ok, tuple(s.problems))
 
-    def _emit(self, name, value):
-        # Publishing happens under the lock so the health we record always
-        # matches the value that went out. Callbacks run outside it: they are
-        # arbitrary consumer code, and a slow one must not stall the node.
-        with self._lock:
+    def _snapshot(self, name, now):
+        """Take a sequenced snapshot. The caller must hold _lock."""
+        self._sequence += 1
+        return name, self._sequence, self._observations[name].snapshot(now)
+
+    def _emit(self, name, sequence, value):
+        # Neither _lock nor the publisher is held while consumer callbacks
+        # run: they are arbitrary code, and a slow one must not stall the
+        # node. Publishing is not under _lock either, because ~/updates/image
+        # is a reliable 2.7 MB topic and a subscriber that falls behind can
+        # make the write block for max_blocking_time.
+        with self._emit_lock:
+            # Snapshots are taken under _lock but published after releasing
+            # it, so two of them can arrive here out of order. The sequence
+            # number is what keeps a stale one from landing on top of a newer
+            # one and leaving the latched topic behind the truth.
+            if sequence < self._last_sequence.get(name, 0):
+                return
+            self._last_sequence[name] = sequence
             self._last_health[name] = self._health(value.status)
             self._update_publishers[name].publish(value)
-            callbacks = tuple(self._callbacks)
-        for callback in callbacks:
+        for callback in self._callbacks:
             try:
                 # Each consumer gets its own copy; one mutating what it
                 # receives must not corrupt the next consumer's view.
@@ -109,8 +128,8 @@ class StateNode(Node):
         with self._lock:
             now = self.get_clock().now().to_msg()
             self._observations[name].update(msg, now)
-            value = self._observations[name].snapshot(now)
-        self._emit(name, value)
+            pending = self._snapshot(name, now)
+        self._emit(*pending)
 
     def _refresh(self):
         """Report health changes that no message will announce.
@@ -120,14 +139,16 @@ class StateNode(Node):
         keeps the tick from copying an unchanged camera frame 20 times a
         second just to republish an identical status.
         """
+        with self._emit_lock:
+            published = dict(self._last_health)
         changed = []
         with self._lock:
             now = self.get_clock().now().to_msg()
             for name, observation in self._observations.items():
-                if self._last_health.get(name) != self._health(observation.status(now)):
-                    changed.append((name, observation.snapshot(now)))
-        for name, value in changed:
-            self._emit(name, value)
+                if published.get(name) != self._health(observation.status(now)):
+                    changed.append(self._snapshot(name, now))
+        for pending in changed:
+            self._emit(*pending)
 
     def _log_status(self):
         """One periodic line covering every input, for eyeballing a live run."""
@@ -152,5 +173,5 @@ class StateNode(Node):
         # Proves the tree actually connects end to end, which the individual
         # transforms above do not.
         parts.append('tf_lookup=' + str(self.tf_buffer.can_transform(
-            'world', 'camera_optical_frame', Time())))
+            *config.TF_LOOKUP_CHECK, Time())))
         self.get_logger().info(' | '.join(parts))
