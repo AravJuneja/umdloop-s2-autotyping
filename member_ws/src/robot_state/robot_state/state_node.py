@@ -71,13 +71,12 @@ class StateNode(Node):
         return response
 
     @staticmethod
-    def _health(value):
-        s = value.status
+    def _health(s):
         return (s.arrived, s.fresh, s.valid, s.rate_known, s.rate_ok, tuple(s.problems))
 
     def _emit(self, name, value):
         with self._lock:
-            self._last_health[name] = self._health(value)
+            self._last_health[name] = self._health(value.status)
             self._update_publishers[name].publish(value)
             callbacks = tuple(self._callbacks)
         for callback in callbacks:
@@ -98,7 +97,7 @@ class StateNode(Node):
         with self._lock:
             now = self.get_clock().now().to_msg()
             for name, observation in self._observations.items():
-                if self._last_health.get(name) != self._health(observation.peek()):
+                if self._last_health.get(name) != self._health(observation.status(now)):
                     changed.append((name, observation.snapshot(now)))
         for name, value in changed:
             self._emit(name, value)

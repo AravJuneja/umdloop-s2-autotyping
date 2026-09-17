@@ -108,18 +108,17 @@ def normalize(name, msg):
                 parent_frame=item.header.frame_id, child_frame=item.child_frame_id,
                 translation=xyz, rotation_xyzw=xyzw,
             ))
-        if msg.transforms:
-            stamp = min((t.header.stamp for t in msg.transforms), key=seconds)
+        if value.transforms:
+            stamp = min((t.source_stamp for t in value.transforms), key=seconds)
     return value, stamp, problems
 
 
 class Observation:
     def __init__(self, name):
-        value_type, topic, expiry, rate = INPUTS[name]
+        value_type, _, expiry, rate = INPUTS[name]
         self._name = name
         self.value = value_type(status=ObservationStatus(
-            source='simulator', input_name=topic,
-            freshness_sec=expiry, expected_rate_hz=rate,
+            source='simulator', freshness_sec=expiry, expected_rate_hz=rate,
         ))
         self.arrivals: deque[float] = deque(maxlen=500)
         self.problems = []
@@ -143,15 +142,11 @@ class Observation:
         self.value = copy.deepcopy(value)
         self.problems = problems
 
-    def peek(self):
-        return copy.deepcopy(self.value)
-
-    def snapshot(self, now):
-        result = copy.deepcopy(self.value)
-        s = result.status
+    def status(self, now):
+        s = copy.deepcopy(self.value.status)
         if not s.arrived:
             s.problems = ['missing']
-            return result
+            return s
         now_ns = nanoseconds(now)
         s.received_age_sec = (now_ns - nanoseconds(s.received_stamp)) / 1e9
         s.age_sec = (now_ns - nanoseconds(
@@ -164,7 +159,7 @@ class Observation:
             problems.append('clock moved behind observation')
         now_sec = now_ns / 1e9
         recent = [t for t in self.arrivals if now_sec - 2.0 <= t <= now_sec]
-        s.rate_known = len(recent) >= 2
+        s.rate_known = len(recent) >= 2 and recent[-1] > recent[0]
         s.rate_hz = ((len(recent) - 1) / (recent[-1] - recent[0])
                      if s.rate_known else 0.0)
         s.rate_ok = s.expected_rate_hz == 0 or (
@@ -174,4 +169,9 @@ class Observation:
             problems.append('update rate outside 50-150% of expected rate')
         s.valid = not problems
         s.problems = problems
+        return s
+
+    def snapshot(self, now):
+        result = copy.deepcopy(self.value)
+        result.status = self.status(now)
         return result

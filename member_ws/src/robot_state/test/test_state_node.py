@@ -127,8 +127,16 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             assert listener and buffer.lookup_transform('world', 'camera', Time())
         for timer in timers:
             timer.cancel()
+        counts_before_stale = counts.copy()
         spin_until(executor, lambda: all(
             not updates[name].status.fresh for name in ('joints', 'image', 'tf')))
+        stale_counts = counts.copy()
+        deadline = time.monotonic() + .2
+        while time.monotonic() < deadline:
+            executor.spin_once(timeout_sec=.02)
+        assert counts == stale_counts
+        assert all(stale_counts[name] == counts_before_stale[name] + 1
+                   for name in ('joints', 'image', 'tf'))
         stale = query()
         assert stale.joints.positions == state.joints.positions
         assert stale.image.pixels == state.image.pixels

@@ -1,5 +1,4 @@
 string source
-string input_name
 bool arrived
 bool has_source_stamp
 builtin_interfaces/Time source_stamp

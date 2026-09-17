@@ -171,7 +171,10 @@ def test_transform_validation_and_each_timestamp():
     assert value.status.valid and value.status.source_stamp == stamp(9.99)
     assert value.transforms[0].source_stamp == stamp()
     msg.transforms[1].transform.rotation.w = 0.0
-    assert not observe('tf', msg).snapshot(stamp()).status.valid
+    invalid = observe('tf', msg).snapshot(stamp())
+    assert not invalid.status.valid
+    assert invalid.status.source_stamp == stamp()
+    assert len(invalid.transforms) == 1
     assert not observe('tf', TFMessage()).snapshot(stamp()).status.valid
 
 
@@ -207,6 +210,15 @@ def test_update_rate_and_recovery():
         msg.header.stamp = stamp(21 + i * .02)
         observation.update(msg, msg.header.stamp)
     assert observation.snapshot(msg.header.stamp).status.valid
+
+
+def test_duplicate_receive_times_do_not_divide_by_zero():
+    observation = Observation('joints')
+    observation.update(message('joints'), stamp())
+    observation.update(message('joints'), stamp())
+    status = observation.snapshot(stamp()).status
+    assert not status.rate_known
+    assert status.rate_hz == 0
 
 
 def test_invalid_latest_replaces_previous_value():
