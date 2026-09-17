@@ -1,6 +1,6 @@
 This repo contains code for software challenge 2 specified in [this doc](challenge_spec.pdf)
 
-Our Logs can be found ((here)[https://docs.google.com/document/d/1WLQU7h1sxwaj7nFyXOctIzjUhHK8tUPtBf6354ASlB4/edit?usp=sharing])
+Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nFyXOctIzjUhHK8tUPtBf6354ASlB4/edit?usp=sharing)
 
 ## Layout
 
