@@ -14,7 +14,10 @@ This repo contains code for software challenge 2 specified in [this doc](challen
 ## Workflow
 
 1. `./start.sh` — brings up the `sim` and `dev` containers and the dashboard
-   at http://localhost:8080.
+   at http://localhost:8080. Set `AUTOTYPE_PORT` to use a different port
+   (e.g. `AUTOTYPE_PORT=8091 ./start.sh`), such as when running a second,
+   isolated stack alongside the first — see `sim/docker-compose.yml` for
+   details.
 2. `sim/member_ws` is a symlink to `./member_ws` in this repo. Docker's bind
    mount (`sim`'s `docker-compose.yml` maps `./member_ws` to `/ws` in the
    `dev` container) follows that symlink, so `/ws` inside the container and
