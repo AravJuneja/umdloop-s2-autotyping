@@ -1,5 +1,7 @@
 This repo contains code for software challenge 2 specified in [this doc](challenge_spec.pdf)
 
+Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nFyXOctIzjUhHK8tUPtBf6354ASlB4/edit?usp=sharing)
+
 ## Layout
 
 - `sim/` — the URC autotyping simulator, vendored in as a git submodule
@@ -19,7 +21,10 @@ This repo contains code for software challenge 2 specified in [this doc](challen
 1. `./start.sh` — brings up the `sim` and `dev` containers and the dashboard
    at http://localhost:8080. On first run it also initializes the `sim`
    submodule and creates the `sim/member_ws` symlink (below), so a fresh
-   clone needs nothing else.
+   clone needs nothing else. Set `AUTOTYPE_PORT` to use a different port
+   (e.g. `AUTOTYPE_PORT=8091 ./start.sh`), such as when running a second,
+   isolated stack alongside the first — see `sim/docker-compose.yml` for
+   details.
 2. `sim/member_ws` is a symlink to `./member_ws` in this repo, created by
    `start.sh` on every run (a symlink can't be tracked in git). Docker's bind
    mount (`sim`'s `docker-compose.yml` maps `./member_ws` to `/ws` in the
