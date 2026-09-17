@@ -59,7 +59,7 @@ def normalize(name, msg):
         value.frame_id = msg.header.frame_id
         value.width, value.height = msg.width, msg.height
         value.encoding, value.row_step = msg.encoding, msg.step
-        value.pixels = copy.copy(msg.data)
+        value.pixels = msg.data
         if msg.encoding != 'bgr8':
             problems.append('supported image encoding is bgr8')
         if (not msg.width or not msg.height or msg.step < msg.width * 3
@@ -100,8 +100,10 @@ def normalize(name, msg):
                     or not finite((*xyz, *xyzw))
                     or abs(sum(v * v for v in xyzw) - 1.0) > 0.001):
                 problems.append('invalid transform frames, translation, or quaternion')
+                continue
             if item.header.stamp.sec < 0 or item.header.stamp.nanosec >= 10**9:
                 problems.append('invalid transform timestamp')
+                continue
             children.add(item.child_frame_id)
             value.transforms.append(Transform(
                 source_stamp=copy.deepcopy(item.header.stamp),
@@ -136,7 +138,7 @@ class Observation:
                 problems.append('invalid source timestamp')
             if seconds(stamp) > seconds(now) + 0.05:
                 problems.append('source timestamp is in the future')
-        if self.arrivals and seconds(now) <= self.arrivals[-1]:
+        if self.arrivals and seconds(now) < self.arrivals[-1]:
             self.arrivals.clear()
         self.arrivals.append(seconds(now))
         value.status = status
@@ -149,9 +151,9 @@ class Observation:
         if not s.arrived:
             s.problems = ['missing']
             return result
-        now_sec = seconds(now)
-        s.received_age_sec = (nanoseconds(now) - nanoseconds(s.received_stamp)) / 1e9
-        s.age_sec = (nanoseconds(now) - nanoseconds(
+        now_ns = nanoseconds(now)
+        s.received_age_sec = (now_ns - nanoseconds(s.received_stamp)) / 1e9
+        s.age_sec = (now_ns - nanoseconds(
             s.source_stamp if s.has_source_stamp else s.received_stamp)) / 1e9
         s.fresh = (s.received_age_sec >= 0 and s.age_sec >= -0.05
                    and (s.freshness_sec < 0
@@ -159,6 +161,7 @@ class Observation:
         problems = list(self.problems)
         if s.received_age_sec < 0 or s.age_sec < -0.05:
             problems.append('clock moved behind observation')
+        now_sec = now_ns / 1e9
         recent = [t for t in self.arrivals if now_sec - 2.0 <= t <= now_sec]
         s.rate_known = len(recent) >= 2
         s.rate_hz = ((len(recent) - 1) / (recent[-1] - recent[0])
