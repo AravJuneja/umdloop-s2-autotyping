@@ -20,7 +20,8 @@ mkdir -p "$REPO/member_ws/src"
 if [[ -d "$REPO/sim/member_ws" && ! -L "$REPO/sim/member_ws" ]]; then
     echo "ERROR: sim/member_ws is a real directory, not a symlink (left over from" >&2
     echo "an older start.sh run). Its contents were never tracked." >&2
-    echo "Fix: move its contents into member_ws/, run 'docker compose down', then re-run this script." >&2
+    echo "Fix: run '(cd sim && docker compose down)', move its contents into member_ws/," >&2
+    echo "remove the empty sim/member_ws directory, then re-run this script." >&2
     exit 1
 fi
 ln -sfn ../member_ws "$REPO/sim/member_ws"

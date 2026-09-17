@@ -1,4 +1,4 @@
 [submodule "sim"]
 	path = sim
 	url = https://github.com/Rishav-N/AutoTypingChallengeSim.git
-	ignore = dirty
+	ignore = untracked
