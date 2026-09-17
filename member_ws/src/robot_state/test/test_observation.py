@@ -143,7 +143,7 @@ def test_camera_frame_required(name):
 
 @pytest.mark.parametrize('field,value', [
     ('width', 0), ('distortion_model', 'unknown'), ('d', []),
-    ('k', [float('nan')] * 9), ('k', [0.] * 9), ('p', [0.] * 12),
+    ('k', [float('nan')] * 9), ('k', [0.] * 9),
 ])
 def test_invalid_calibration(field, value):
     msg = message('calibration')

@@ -53,7 +53,6 @@ def normalize(name, msg):
             value.names = list(KNOWN_JOINTS)
             value.positions = [msg.position[i] for i in order]
             value.velocities = [msg.velocity[i] for i in order] if msg.velocity else []
-            value.efforts = [msg.effort[i] for i in order] if msg.effort else []
     elif name == 'image':
         stamp = msg.header.stamp
         value.frame_id = msg.header.frame_id
@@ -74,12 +73,11 @@ def normalize(name, msg):
         value.frame_id = msg.header.frame_id
         value.width, value.height = msg.width, msg.height
         value.distortion_model, value.distortion = msg.distortion_model, msg.d
-        value.intrinsic, value.rectification, value.projection = msg.k, msg.r, msg.p
+        value.intrinsic = msg.k
         if (not msg.width or not msg.height or not msg.header.frame_id
-                or not finite((*msg.k, *msg.r, *msg.p, *msg.d))
+                or not finite((*msg.k, *msg.d))
                 or msg.k[0] <= 0 or msg.k[4] <= 0 or msg.k[8] != 1
-                or not 0 <= msg.k[2] < msg.width or not 0 <= msg.k[5] < msg.height
-                or msg.p[0] <= 0 or msg.p[5] <= 0 or msg.p[10] != 1):
+                or not 0 <= msg.k[2] < msg.width or not 0 <= msg.k[5] < msg.height):
             problems.append('invalid calibration dimensions, frame, or matrices')
         if msg.distortion_model != 'plumb_bob' or len(msg.d) != 5:
             problems.append('supported calibration is plumb_bob with five coefficients')
@@ -117,8 +115,8 @@ def normalize(name, msg):
 
 class Observation:
     def __init__(self, name):
-        self.name = name
         value_type, topic, expiry, rate = INPUTS[name]
+        self._name = name
         self.value = value_type(status=ObservationStatus(
             source='simulator', input_name=topic,
             freshness_sec=expiry, expected_rate_hz=rate,
@@ -127,7 +125,7 @@ class Observation:
         self.problems = []
 
     def update(self, msg, now):
-        value, stamp, problems = normalize(self.name, msg)
+        value, stamp, problems = normalize(self._name, msg)
         status = copy.deepcopy(self.value.status)
         status.arrived = True
         status.received_stamp = copy.deepcopy(now)

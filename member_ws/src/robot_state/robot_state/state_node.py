@@ -16,7 +16,7 @@ from .observation import INPUTS, KNOWN_JOINTS, Observation
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 SENSOR = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
-TF_DYNAMIC = QoSProfile(depth=100, reliability=ReliabilityPolicy.BEST_EFFORT)
+TF_DYNAMIC = QoSProfile(depth=100)
 TF_STATIC = QoSProfile(depth=100, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 TOPIC_SPECS: dict[str, tuple[type, QoSProfile | int]] = {
     'joints': (JointState, 10),
