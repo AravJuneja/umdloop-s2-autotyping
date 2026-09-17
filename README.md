@@ -1,5 +1,7 @@
 This repo contains code for software challenge 2 specified in [this doc](challenge_spec.pdf)
 
+Our Logs can be found ((here)[])
+
 ## Layout
 
 - `sim/` — the URC autotyping simulator, vendored in as a git submodule
