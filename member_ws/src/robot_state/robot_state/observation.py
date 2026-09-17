@@ -143,6 +143,9 @@ class Observation:
         self.value = copy.deepcopy(value)
         self.problems = problems
 
+    def peek(self):
+        return copy.deepcopy(self.value)
+
     def snapshot(self, now):
         result = copy.deepcopy(self.value)
         s = result.status

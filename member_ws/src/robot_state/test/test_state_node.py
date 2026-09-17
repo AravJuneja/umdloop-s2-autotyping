@@ -7,10 +7,12 @@ import sys
 import time
 
 import pytest
+from rcl_interfaces.msg import Log as RosoutLog
 import rclpy
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
 from robot_state.observation import INPUTS, KNOWN_JOINTS
 from robot_state.state_node import LATCHED, StateNode, TOPIC_SPECS
@@ -32,7 +34,15 @@ def spin_until(executor, predicate, timeout=10):
 def test_live_query_latching_staleness_and_tf(separate_process):
     context = Context()
     rclpy.init(context=context, domain_id=91)
-    probe = Node('state_contract_probe', context=context)
+    probe = Node('state_contract_probe', context=context,
+                 enable_rosout=True)
+    log_records: list[RosoutLog] = []
+    probe.create_subscription(
+        RosoutLog, '/rosout', log_records.append, qos_profile_sensor_data)
+
+    def probe_log_text():
+        return ' '.join(
+            record.msg for record in log_records if record.name == 'robot_state')
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(probe)
     adapter = None
@@ -110,6 +120,7 @@ def test_live_query_latching_staleness_and_tf(separate_process):
                 lambda: adapter.tf_buffer.can_transform('world', 'camera', Time()))
             assert adapter.tf_buffer.lookup_transform('world', 'camera', Time())
         else:
+            spin_until(executor, lambda: 'world->camera' in probe_log_text())
             buffer = Buffer()
             listener = TransformListener(buffer, probe)
             spin_until(executor, lambda: buffer.can_transform('world', 'camera', Time()))

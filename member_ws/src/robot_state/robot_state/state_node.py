@@ -76,9 +76,11 @@ class StateNode(Node):
         return (s.arrived, s.fresh, s.valid, s.rate_known, s.rate_ok, tuple(s.problems))
 
     def _emit(self, name, value):
-        self._last_health[name] = self._health(value)
-        self._update_publishers[name].publish(value)
-        for callback in tuple(self._callbacks):
+        with self._lock:
+            self._last_health[name] = self._health(value)
+            self._update_publishers[name].publish(value)
+            callbacks = tuple(self._callbacks)
+        for callback in callbacks:
             try:
                 callback(name, copy.deepcopy(value))
             except Exception as error:
@@ -88,15 +90,18 @@ class StateNode(Node):
         with self._lock:
             now = self.get_clock().now().to_msg()
             self._observations[name].update(msg, now)
-            self._emit(name, self._observations[name].snapshot(now))
+            value = self._observations[name].snapshot(now)
+        self._emit(name, value)
 
     def _refresh(self):
+        changed = []
         with self._lock:
             now = self.get_clock().now().to_msg()
             for name, observation in self._observations.items():
-                value = observation.snapshot(now)
-                if self._last_health.get(name) != self._health(value):
-                    self._emit(name, value)
+                if self._last_health.get(name) != self._health(observation.peek()):
+                    changed.append((name, observation.snapshot(now)))
+        for name, value in changed:
+            self._emit(name, value)
 
     def _log_status(self):
         state = self.get_state()
