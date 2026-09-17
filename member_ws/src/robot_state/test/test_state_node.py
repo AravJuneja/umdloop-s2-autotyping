@@ -124,11 +124,22 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         assert not state.launch_key.status.has_source_stamp
         if adapter:
             assert set(local_updates) == set(INPUTS)
+            assert all(value.status.arrived and value.status.valid
+                       for value in local_updates.values())
+            assert local_updates['launch_key'].key == 'ROVER'
             assert adapter.get_state().launch_key.key == state.launch_key.key
             spin_until(
                 executor,
                 lambda: adapter.tf_buffer.can_transform('world', 'camera', Time()))
             assert adapter.tf_buffer.lookup_transform('world', 'camera', Time())
+        assert len(subscriptions) == len(INPUTS)
+        # Staleness and recovery are asserted once, in-process. Crossing a
+        # process boundary changes how the messages travel, not when an
+        # input expires, so re-running this against the subprocess would
+        # only pay for a second node lifecycle to reach the same states.
+        if separate_process:
+            assert process.poll() is None
+            return
         for timer in timers:
             timer.cancel()
         # Timers are cancelled, so the only thing that can publish now is
@@ -165,9 +176,6 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             timer.reset()
         spin_until(executor, lambda: updates['launch_key'].status.valid
                    and updates['joints'].status.fresh and updates['image'].status.fresh)
-        assert subscriptions
-        if process:
-            assert process.poll() is None
     finally:
         if process:
             process.send_signal(signal.SIGINT)
@@ -180,4 +188,31 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             adapter.destroy_node()
         executor.shutdown()
         probe.destroy_node()
+        context.try_shutdown()
+
+
+def test_missing_inputs_are_announced_before_any_message_arrives():
+    """A consumer that connects first is told the inputs are missing.
+
+    The health tick publishes that state, which is why the callback set above
+    is complete long before real data shows up.
+    """
+    context = Context()
+    rclpy.init(context=context, domain_id=DOMAIN_ID)
+    node = StateNode(context=context)
+    executor = SingleThreadedExecutor(context=context)
+    executor.add_node(node)
+    seen = {}
+    try:
+        node.on_update(lambda name, value: seen.setdefault(name, value))
+        spin_until(executor, lambda: set(seen) == set(INPUTS))
+        assert all(not value.status.arrived and not value.status.valid
+                   for value in seen.values())
+        assert all(list(value.status.problems) == ['missing']
+                   for value in seen.values())
+        # Nothing arrived, so nothing can be said about the rate either.
+        assert not any(value.status.rate_known for value in seen.values())
+    finally:
+        node.destroy_node()
+        executor.shutdown()
         context.try_shutdown()
