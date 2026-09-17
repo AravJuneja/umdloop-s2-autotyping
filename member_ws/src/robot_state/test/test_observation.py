@@ -8,48 +8,13 @@ does, which is not something a wall-clock integration test can pin down.
 import copy
 
 from builtin_interfaces.msg import Time
-from geometry_msgs.msg import TransformStamped
+from conftest import message, stamp
 import pytest
 from rclpy.serialization import deserialize_message, serialize_message
 from robot_state.config import INPUTS, KNOWN_JOINTS
 from robot_state.observation import Observation
-from sensor_msgs.msg import CameraInfo, Image, JointState
 from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
-
-
-def stamp(value=10.0):
-    """Build a Time from fractional seconds; 10.0 is the default "now".
-
-    Tests pass a different value to move the clock rather than to wait.
-    """
-    ns = round(value * 10**9)
-    return Time(sec=ns // 10**9, nanosec=ns % 10**9)
-
-
-def message(name):
-    """Build a minimal valid message for one input, for tests to then corrupt."""
-    if name == 'joints':
-        msg = JointState(name=list(KNOWN_JOINTS), position=[0., 1., 2., 3., 4.],
-                         velocity=[5., 6., 7., 8., 9.])
-    elif name == 'image':
-        msg = Image(width=2, height=2, encoding='bgr8', step=8, data=bytes(range(16)))
-    elif name == 'calibration':
-        msg = CameraInfo(width=2, height=2, distortion_model='plumb_bob', d=[0.] * 5,
-                         k=[9., 0., .5, 0., 9., .5, 0., 0., 1.],
-                         r=[1., 0., 0., 0., 1., 0., 0., 0., 1.],
-                         p=[9., 0., .5, 0., 0., 9., .5, 0., 0., 0., 1., 0.])
-    elif name == 'launch_key':
-        return String(data='ROVER')
-    else:
-        transform = TransformStamped(child_frame_id='camera')
-        transform.header.frame_id = 'world'
-        transform.header.stamp = stamp()
-        transform.transform.rotation.w = 1.0
-        return TFMessage(transforms=[transform])
-    msg.header.stamp = stamp()
-    msg.header.frame_id = 'camera_optical_frame'
-    return msg
 
 
 def observe(name, msg=None, now=10.0):
@@ -96,7 +61,14 @@ def test_stale_retains_value_and_source_stamp(name):
 
 @pytest.mark.parametrize('name', ['calibration', 'launch_key', 'tf_static'])
 def test_latched_values_do_not_expire(name):
-    assert observe(name).snapshot(stamp(10000)).status.fresh
+    status = observe(name).snapshot(stamp(10000)).status
+    assert status.latched and status.fresh
+
+
+@pytest.mark.parametrize('name', ['joints', 'image', 'tf'])
+def test_windowed_inputs_are_not_latched(name):
+    status = observe(name).snapshot(stamp()).status
+    assert not status.latched and status.freshness_sec > 0
 
 
 def test_unstamped_key_uses_receive_time_without_inventing_source_stamp():
@@ -120,7 +92,7 @@ def test_joints_reordered_by_name_and_owned():
 
 @pytest.mark.parametrize('field,value', [
     ('name', ['unknown'] * 5), ('name', [KNOWN_JOINTS[0]] * 5),
-    ('position', [0.]), ('velocity', [0.]), ('effort', [0.]),
+    ('position', [0.]), ('velocity', [0.]),
     ('position', [float('nan')] * 5), ('velocity', [float('inf')] * 5),
 ])
 def test_invalid_joints(field, value):
@@ -135,6 +107,15 @@ def test_optional_joint_arrays():
     msg = message('joints')
     msg.velocity = []
     assert observe('joints', msg).snapshot(stamp()).status.valid
+
+
+def test_garbage_effort_does_not_invalidate_positions():
+    """Effort is not republished, so it does not get to reject a message."""
+    msg = message('joints')
+    msg.effort = [float('nan')] * 3
+    result = observe('joints', msg).snapshot(stamp())
+    assert result.status.valid
+    assert list(result.positions) == [0., 1., 2., 3., 4.]
 
 
 @pytest.mark.parametrize('field,value', [
@@ -201,6 +182,8 @@ def test_delayed_future_and_backward_clock():
     assert not observe('joints', now=9).snapshot(stamp(9)).status.valid
     assert not observe('joints').snapshot(stamp(9)).status.fresh
     assert not observe('joints').snapshot(stamp(9)).status.valid
+    # Running at 5 Hz instead of 50 is a stream problem, not a data problem:
+    # the positions in the message are still exactly what was sent.
 
 
 def test_freshness_boundary():
@@ -223,16 +206,37 @@ def test_update_rate_and_recovery():
     status = observation.snapshot(stamp(11.18)).status
     assert status.rate_known and status.rate_ok and status.valid
     assert status.rate_hz == pytest.approx(50)
-    assert not observation.snapshot(stamp(20)).status.rate_known
+    # Long after the stream died the rate is known, and known to be zero.
+    dead = observation.snapshot(stamp(20)).status
+    assert dead.rate_known and dead.rate_hz == 0 and not dead.rate_ok
     for i in range(3):
         msg.header.stamp = stamp(20 + i * .2)
         observation.update(msg, msg.header.stamp)
+    # Running at 5 Hz instead of 50 is a stream problem, not a data problem:
+    # the positions in the message are still exactly what was sent.
     status = observation.snapshot(stamp(20.4)).status
-    assert status.fresh and not status.valid and not status.rate_ok
+    assert status.fresh and status.valid and not status.rate_ok
+    assert status.problems == []
     for i in range(120):
         msg.header.stamp = stamp(21 + i * .02)
         observation.update(msg, msg.header.stamp)
-    assert observation.snapshot(msg.header.stamp).status.valid
+    recovered = observation.snapshot(msg.header.stamp).status
+    assert recovered.valid and recovered.rate_ok
+
+
+def test_rate_decays_while_the_publisher_is_silent():
+    """A stalled stream must not keep reporting its last healthy rate."""
+    observation = Observation('joints')
+    for i in range(50):
+        msg = message('joints')
+        msg.header.stamp = stamp(10 + i * .02)
+        observation.update(msg, msg.header.stamp)
+    # Nothing arrives after 10.98.
+    assert observation.snapshot(stamp(11)).status.rate_hz == pytest.approx(50, rel=.05)
+    decaying = [observation.snapshot(stamp(t)).status.rate_hz
+                for t in (11.5, 12.0, 12.5)]
+    assert decaying == sorted(decaying, reverse=True)
+    assert decaying[-1] < 25
 
 
 def test_duplicate_receive_times_do_not_divide_by_zero():

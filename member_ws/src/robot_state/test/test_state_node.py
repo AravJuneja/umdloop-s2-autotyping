@@ -13,16 +13,16 @@ import subprocess
 import sys
 import time
 
+from conftest import DOMAIN_ID, message
 import pytest
 import rclpy
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.time import Time
-from robot_state.config import INPUTS, KNOWN_JOINTS, LATCHED
+from robot_state.config import INPUTS, KNOWN_JOINTS, LATCHED_QOS
 from robot_state.state_node import StateNode
 from robot_state_interfaces.srv import GetRobotState
-from test_observation import message
 
 
 def spin_until(executor, predicate, timeout=10):
@@ -45,7 +45,7 @@ def test_live_query_latching_staleness_and_tf(separate_process):
     node up six times to re-reach the same states.
     """
     context = Context()
-    rclpy.init(context=context, domain_id=91)
+    rclpy.init(context=context, domain_id=DOMAIN_ID)
     probe = Node('state_contract_probe', context=context)
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(probe)
@@ -67,7 +67,7 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         if separate_process:
             process = subprocess.Popen(
                 [sys.executable, '-m', 'robot_state.robot_state'],
-                env={**os.environ, 'ROS_DOMAIN_ID': '91'})
+                env={**os.environ, 'ROS_DOMAIN_ID': str(DOMAIN_ID)})
         else:
             adapter = StateNode(context=context)
             executor.add_node(adapter)
@@ -88,7 +88,7 @@ def test_live_query_latching_staleness_and_tf(separate_process):
 
         subscriptions = [probe.create_subscription(
             spec.observation, f'/robot_state/updates/{name}',
-            partial(receive, name), LATCHED)
+            partial(receive, name), LATCHED_QOS)
             for name, spec in INPUTS.items()]
         client = probe.create_client(GetRobotState, '/robot_state/get_state')
         assert client.wait_for_service(timeout_sec=10)
@@ -132,18 +132,22 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         for timer in timers:
             timer.cancel()
         # Timers are cancelled, so the only thing that can publish now is
-        # the health tick noticing the inputs have gone stale.
+        # the health tick. A stall produces two independent transitions --
+        # the input stops being fresh, and separately its rate decays out of
+        # band -- and each one is worth announcing.
         counts_before_stale = counts.copy()
         spin_until(executor, lambda: all(
-            not updates[name].status.fresh for name in ('joints', 'image', 'tf')))
-        stale_counts = counts.copy()
-        deadline = time.monotonic() + .2
+            not updates[name].status.fresh and not updates[name].status.rate_ok
+            for name in ('joints', 'image', 'tf')))
+        settled = counts.copy()
+        deadline = time.monotonic() + .5
         while time.monotonic() < deadline:
             executor.spin_once(timeout_sec=.02)
-        # Exactly one publish per input for the transition, and nothing
-        # after it: staying stale is not an event.
-        assert counts == stale_counts
-        assert all(stale_counts[name] == counts_before_stale[name] + 1
+        # Once health has settled there is nothing left to say: continuing to
+        # be stale is not an event.
+        assert counts == settled
+        assert all(counts_before_stale[name] < settled[name]
+                   <= counts_before_stale[name] + 2
                    for name in ('joints', 'image', 'tf'))
         # Stale inputs keep their last value; latched ones never expire.
         stale = query()

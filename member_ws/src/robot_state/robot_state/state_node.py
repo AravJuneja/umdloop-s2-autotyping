@@ -37,7 +37,7 @@ class StateNode(Node):
         # current value of every input instead of waiting for the next message.
         self._update_publishers = {
             name: self.create_publisher(spec.observation, f'~/updates/{name}',
-                                        config.LATCHED)
+                                        config.LATCHED_QOS)
             for name, spec in config.INPUTS.items()
         }
         # Our own TF buffer, fed by the standard listener rather than by our

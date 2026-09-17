@@ -59,13 +59,14 @@ def normalize(name, msg):
         if (len(msg.name) != config.JOINT_COUNT
                 or set(msg.name) != set(config.KNOWN_JOINTS)):
             problems.append('joint names must contain each known joint once')
-        # velocity and effort are optional in JointState; present means they
-        # must line up with the names, absent means we publish nothing for them.
+        # velocity is optional in JointState; present means it must line up
+        # with the names, absent means we publish nothing for it. effort is
+        # deliberately not checked -- we do not republish it, and rejecting a
+        # message over a field we discard would throw away good positions.
         if (len(msg.position) != len(msg.name)
-                or len(msg.velocity) not in (0, len(msg.name))
-                or len(msg.effort) not in (0, len(msg.name))):
+                or len(msg.velocity) not in (0, len(msg.name))):
             problems.append('joint array lengths do not match names')
-        if not finite((*msg.position, *msg.velocity, *msg.effort)):
+        if not finite((*msg.position, *msg.velocity)):
             problems.append('non-finite joint data')
         if not problems:
             # Republish in KNOWN_JOINTS order so consumers can index by
@@ -165,8 +166,10 @@ class Observation:
     def __init__(self, name):
         spec = config.INPUTS[name]
         self._name = name
+        latched = spec.freshness_sec is None
         self.value = spec.observation(status=ObservationStatus(
-            source=config.SOURCE, freshness_sec=spec.freshness_sec,
+            source=config.SOURCE, latched=latched,
+            freshness_sec=0.0 if latched else spec.freshness_sec,
             expected_rate_hz=spec.expected_rate_hz,
         ))
         self.arrivals: deque[float] = deque(maxlen=config.ARRIVAL_HISTORY)
@@ -217,34 +220,24 @@ class Observation:
         s.age_sec = (now_ns - nanoseconds(
             s.source_stamp if s.has_source_stamp else s.received_stamp)) / 1e9
         # Both ages must be inside the window: a message that just arrived is
-        # still stale if the data inside it is old. Latched inputs
-        # (freshness_sec < 0) never expire.
+        # still stale if the data inside it is old. Latched inputs never expire.
         s.fresh = (s.received_age_sec >= 0
                    and s.age_sec >= -config.CLOCK_SKEW_TOLERANCE_SEC
-                   and (s.freshness_sec < 0
+                   and (s.latched
                         or max(s.age_sec, s.received_age_sec) <= s.freshness_sec))
         problems = list(self.problems)
         if (s.received_age_sec < 0
                 or s.age_sec < -config.CLOCK_SKEW_TOLERANCE_SEC):
             problems.append('clock moved behind observation')
-        now_sec = now_ns / 1e9
-        recent = [t for t in self.arrivals
-                  if now_sec - config.RATE_WINDOW_SEC <= t <= now_sec]
-        # n arrivals span n-1 intervals. Identical timestamps span no interval
-        # at all, so there is no rate to report rather than a division by zero.
-        s.rate_known = len(recent) >= 2 and recent[-1] > recent[0]
-        s.rate_hz = ((len(recent) - 1) / (recent[-1] - recent[0])
-                     if s.rate_known else 0.0)
+        s.rate_known, s.rate_hz = self._rate(now_ns / 1e9)
         # An input with no expected rate is always rate_ok; there is nothing
-        # to be wrong about.
+        # to be wrong about. Rate deliberately does not feed `valid`: a
+        # publisher running slow does not make the numbers it sent wrong, and
+        # a consumer that cares reads rate_ok on its own.
         s.rate_ok = s.expected_rate_hz == 0 or (
             s.rate_known and
             config.RATE_TOLERANCE_LOW * s.expected_rate_hz <= s.rate_hz
             <= config.RATE_TOLERANCE_HIGH * s.expected_rate_hz)
-        # Only complain once the rate is measurable: a stream that has just
-        # started has no rate yet, which is not the same as a bad one.
-        if s.expected_rate_hz and s.rate_known and not s.rate_ok:
-            problems.append('update rate outside 50-150% of expected rate')
         s.valid = not problems
         s.problems = problems
         return s
@@ -254,3 +247,30 @@ class Observation:
         result = copy.deepcopy(self.value)
         result.status = self.status(now)
         return result
+
+    def _rate(self, now_sec):
+        """Estimate arrivals per second over the trailing window.
+
+        Counting over a fixed window rather than over the span of the messages
+        themselves is what makes a stalled publisher visible: as its arrivals
+        age out, the count falls while the divisor stays put, so the rate
+        decays to zero instead of holding at its last healthy value.
+        """
+        if not self.arrivals:
+            return False, 0.0
+        window_start = now_sec - config.RATE_WINDOW_SEC
+        recent = [t for t in self.arrivals if window_start <= t <= now_sec]
+        if self.arrivals[0] > window_start:
+            # Still filling the window, so measure from the first message we
+            # ever saw. It marks the start of the period rather than an
+            # arrival inside it, so it is not counted.
+            observed_since, counted = self.arrivals[0], len(recent) - 1
+        else:
+            observed_since, counted = window_start, len(recent)
+        observed_sec = now_sec - observed_since
+        # Too short a period makes the estimate meaningless in both
+        # directions: one early message would read as a huge rate, and a
+        # stream one message old would read as dead.
+        if observed_sec < config.RATE_MIN_OBSERVATION_SEC:
+            return False, 0.0
+        return True, max(counted, 0) / observed_sec

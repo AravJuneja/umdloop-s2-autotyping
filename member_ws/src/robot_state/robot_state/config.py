@@ -31,9 +31,10 @@ KNOWN_JOINTS = (
 JOINT_COUNT = len(KNOWN_JOINTS)
 
 # Inputs whose value is published once and stays true for the rest of the
-# episode. They get LATCHED_FRESHNESS instead of a real window, and they share
-# the transform-batch normalizer in observation.py.
-LATCHED_FRESHNESS = -1.0
+# episode. A freshness window of None marks them -- spelled out rather than
+# encoded as a negative number, because -1.0 already means "not computed" on
+# the age fields and one sentinel should not carry two meanings.
+LATCHED = None
 NO_EXPECTED_RATE = 0.0
 TF_INPUTS = ('tf', 'tf_static')
 
@@ -42,7 +43,7 @@ TF_INPUTS = ('tf', 'tf_static')
 # the simulator's write-once topics and for our own ~/updates publishers, so a
 # node that starts late still sees the current state instead of waiting for
 # the next message.
-LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+LATCHED_QOS = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 # Camera frames: newest wins, dropping is better than queueing.
 SENSOR = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
 # TF batches arrive faster than we consume them and each one matters, so the
@@ -59,12 +60,12 @@ class InputSpec(NamedTuple):
     the same record.
     """
 
-    observation: type          # the project-owned message we publish
-    ros_type: type             # the message type the simulator publishes
-    topic: str                 # the topic we subscribe to
+    observation: type            # the project-owned message we publish
+    ros_type: type               # the message type the simulator publishes
+    topic: str                   # the topic we subscribe to
     qos: QoSProfile | int
-    freshness_sec: float       # negative means latched for the episode
-    expected_rate_hz: float    # 0 means rate health is not meaningful
+    freshness_sec: float | None  # None means latched for the episode
+    expected_rate_hz: float      # 0 means rate health is not meaningful
 
 
 # Freshness windows are set at roughly three missed messages, which is long
@@ -76,16 +77,16 @@ INPUTS: dict[str, InputSpec] = {
     'image': InputSpec(
         ImageObservation, Image, '/camera/image_raw', SENSOR, 0.25, 15.0),
     'calibration': InputSpec(
-        CalibrationObservation, CameraInfo, '/camera/camera_info', LATCHED,
-        LATCHED_FRESHNESS, NO_EXPECTED_RATE),
+        CalibrationObservation, CameraInfo, '/camera/camera_info', LATCHED_QOS,
+        LATCHED, NO_EXPECTED_RATE),
     'launch_key': InputSpec(
-        LaunchKeyObservation, String, '/sim/launch_key', LATCHED,
-        LATCHED_FRESHNESS, NO_EXPECTED_RATE),
+        LaunchKeyObservation, String, '/sim/launch_key', LATCHED_QOS,
+        LATCHED, NO_EXPECTED_RATE),
     'tf': InputSpec(
         TransformObservation, TFMessage, '/tf', TF_DYNAMIC, 0.15, 50.0),
     'tf_static': InputSpec(
         TransformObservation, TFMessage, '/tf_static', TF_STATIC,
-        LATCHED_FRESHNESS, NO_EXPECTED_RATE),
+        LATCHED, NO_EXPECTED_RATE),
 }
 
 # --- Timing tolerances ----------------------------------------------------
@@ -94,12 +95,24 @@ INPUTS: dict[str, InputSpec] = {
 # and the age we would report is not trustworthy.
 CLOCK_SKEW_TOLERANCE_SEC = 0.05
 
-# Arrival times are averaged over this window to estimate a rate. Short enough
-# that a stalled publisher shows up within a few health ticks, long enough
-# that one late message does not swing the estimate.
+# Arrivals are counted over this trailing window and divided by it, so a
+# publisher that stops decays towards zero instead of reporting its last
+# healthy number until the window empties. Short enough that a stall shows up
+# within a few health ticks, long enough that one late message does not swing
+# the estimate.
 RATE_WINDOW_SEC = 2.0
 
+# We refuse to report a rate until we have been listening this long. Without
+# it, the first message to arrive would divide by a near-zero period and claim
+# an absurd rate, and a stream one message old would be called dead.
+RATE_MIN_OBSERVATION_SEC = 0.1
+
 # A stream counts as healthy between half and 1.5x its expected rate. Wide,
+# We refuse to report a rate until we have been listening this long. Without
+# it, the first message to arrive would divide by a near-zero period and claim
+# an absurd rate, and a stream one message old would be called dead.
+RATE_MIN_OBSERVATION_SEC = 0.1
+
 # because we are reporting "is this publisher alive and roughly on schedule",
 # not measuring jitter.
 RATE_TOLERANCE_LOW = 0.5
@@ -137,3 +150,7 @@ DISTORTION_COEFFICIENTS = 5
 # The launch key is short, uppercase, and alphanumeric. Anchored so a key with
 # trailing whitespace or a newline is rejected rather than silently trimmed.
 LAUNCH_KEY_PATTERN = r'[A-Z0-9]{3,6}'
+
+# The pair the periodic log resolves to prove the TF tree connects end to end.
+# Simulator-specific, so it belongs here rather than inline in the log call.
+TF_LOOKUP_CHECK = ('world', 'camera_optical_frame')
