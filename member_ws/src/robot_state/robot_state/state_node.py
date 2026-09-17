@@ -163,6 +163,9 @@ class StateNode(Node):
                 f'{name}={health} valid={s.valid} age={s.age_sec:.3f}s '
                 f'rate={s.rate_hz:.1f}/{s.expected_rate_hz:g}Hz '
                 f'problems={list(s.problems)}')
+        # The names actually arriving, not the ones we expect: if the
+        # simulator renames a joint, this line is where it shows up.
+        parts.append('joint_names=' + ','.join(state.joints.names))
         parts.append(f'image={state.image.width}x{state.image.height} '
                      f'{state.image.encoding} frame={state.image.frame_id}')
         parts.append(f'calibration_frame={state.calibration.frame_id}')
