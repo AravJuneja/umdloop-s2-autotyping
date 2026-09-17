@@ -97,6 +97,8 @@ class StateNode(Node):
         with self._lock:
             now = self.get_clock().now().to_msg()
             for name, observation in self._observations.items():
+                # Publish timer-driven health transitions once without copying
+                # unchanged image payloads on every timer tick.
                 if self._last_health.get(name) != self._health(observation.status(now)):
                     changed.append((name, observation.snapshot(now)))
         for name, value in changed:

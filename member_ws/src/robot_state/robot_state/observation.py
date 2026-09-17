@@ -11,6 +11,8 @@ from robot_state_interfaces.msg import (
 KNOWN_JOINTS = (
     'base_yaw', 'shoulder_pitch', 'elbow_pitch', 'head_pan', 'head_tilt',
 )
+# Message type, source topic, freshness window, and expected rate. A negative
+# freshness window means the latched value remains useful for the episode.
 INPUTS = {
     'joints': (JointObservation, '/joint_states', 0.15, 50.0),
     'image': (ImageObservation, '/camera/image_raw', 0.25, 15.0),
@@ -151,6 +153,7 @@ class Observation:
         s.received_age_sec = (now_ns - nanoseconds(s.received_stamp)) / 1e9
         s.age_sec = (now_ns - nanoseconds(
             s.source_stamp if s.has_source_stamp else s.received_stamp)) / 1e9
+        # A recently received message is still stale if its source data is old.
         s.fresh = (s.received_age_sec >= 0 and s.age_sec >= -0.05
                    and (s.freshness_sec < 0
                         or max(s.age_sec, s.received_age_sec) <= s.freshness_sec))
@@ -159,6 +162,7 @@ class Observation:
             problems.append('clock moved behind observation')
         now_sec = now_ns / 1e9
         recent = [t for t in self.arrivals if now_sec - 2.0 <= t <= now_sec]
+        # Equal timestamps do not span an interval and cannot define a rate.
         s.rate_known = len(recent) >= 2 and recent[-1] > recent[0]
         s.rate_hz = ((len(recent) - 1) / (recent[-1] - recent[0])
                      if s.rate_known else 0.0)
