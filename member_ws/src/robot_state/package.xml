@@ -3,7 +3,7 @@
   <name>robot_state</name>
   <version>0.1.0</version>
   <description>Normalize simulator inputs into timestamped robot observations.</description>
-  <maintainer email="member@todo.todo">member</maintainer>
+  <maintainer email="victor.casado.nyc@gmail.com">Victor Casado</maintainer>
   <license>MIT</license>
   <depend>rclpy</depend>
   <depend>robot_state_interfaces</depend>
@@ -11,6 +11,7 @@
   <depend>sensor_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_msgs</depend>
+  <exec_depend>ros2launch</exec_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>python3-pytest</test_depend>
   <test_depend>python3-mypy</test_depend>

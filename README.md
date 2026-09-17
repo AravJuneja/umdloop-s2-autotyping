@@ -10,7 +10,10 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
   fixed commit.
 - `member_ws/` — our actual code: the ROS 2 workspace for the typist node
   (`member_ws/src/...`). `member_ws/src/` is tracked in this repo; build
-  output (`build/`, `install/`, `log/`) is gitignored.
+  output (`build/`, `install/`, `log/`) is gitignored. Two packages so far:
+  `robot_state`, which normalizes the simulator's topics into one timestamped
+  view of the robot (see its own README), and `robot_state_interfaces`, which
+  holds the messages and the `GetRobotState` service it publishes.
 - `start.sh` — launches the simulator (downloads/loads the docker images on
   first run, then `docker compose up -d`). Run it from this directory.
 
