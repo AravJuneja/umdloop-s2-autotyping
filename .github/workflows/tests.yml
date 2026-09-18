@@ -10,8 +10,17 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-test:
+    name: ${{ matrix.check }}
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, tests, types]
     runs-on: ubuntu-latest
     # The same base the dev container uses, so a green run here means the
     # same thing as a green run in docker. Dependencies below mirror
@@ -53,17 +62,42 @@ jobs:
           . /opt/ros/jazzy/setup.sh
           colcon build --symlink-install
 
-      - name: Test
+      # Run packages separately because their test module names can overlap.
+      # Collect failures so every package gets checked.
+      - name: Lint
+        if: matrix.check == 'lint'
         working-directory: member_ws
         run: |
           . /opt/ros/jazzy/setup.sh
           . install/setup.sh
-          python3 -m pytest src -q
+          status=0
+          for test in src/*/test/test_flake8.py; do
+            python3 -m pytest "$test" -q || status=1
+          done
+          exit "$status"
+
+      - name: Test
+        if: matrix.check == 'tests'
+        working-directory: member_ws
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          . install/setup.sh
+          status=0
+          for tests in src/*/test; do
+            python3 -m pytest "$tests" --ignore-glob='*test_flake8.py' -q || status=1
+          done
+          exit "$status"
 
       - name: Types
+        if: matrix.check == 'types'
         working-directory: member_ws
         run: |
           . /opt/ros/jazzy/setup.sh
           . install/setup.sh
-          python3 -m mypy --ignore-missing-imports --check-untyped-defs \
-            src/robot_state/robot_state src/robot_state/test
+          status=0
+          for setup in src/*/setup.py; do
+            package=${setup%/setup.py}
+            python3 -m mypy --ignore-missing-imports --check-untyped-defs \
+              "$package/${package##*/}" "$package/test" || status=1
+          done
+          exit "$status"
