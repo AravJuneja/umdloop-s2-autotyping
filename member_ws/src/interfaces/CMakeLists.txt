@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(robot_state_interfaces)
+project(interfaces)
 find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)

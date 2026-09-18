@@ -14,6 +14,7 @@ import sys
 import time
 
 from conftest import DOMAIN_ID, message
+from interfaces.srv import GetRobotState
 import pytest
 import rclpy
 from rclpy.context import Context
@@ -22,7 +23,6 @@ from rclpy.node import Node
 from rclpy.time import Time
 from robot_state.config import INPUTS, KNOWN_JOINTS, LATCHED_QOS
 from robot_state.state_node import StateNode
-from robot_state_interfaces.srv import GetRobotState
 
 
 def spin_until(executor, predicate, timeout=10):

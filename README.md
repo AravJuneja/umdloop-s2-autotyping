@@ -12,8 +12,8 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
   (`member_ws/src/...`). `member_ws/src/` is tracked in this repo; build
   output (`build/`, `install/`, `log/`) is gitignored. Two packages so far:
   `robot_state`, which normalizes the simulator's topics into one timestamped
-  view of the robot (see its own README), and `robot_state_interfaces`, which
-  holds the messages and the `GetRobotState` service it publishes.
+  view of the robot (see its own README), and `interfaces`, which holds every
+  message and service this workspace defines.
 - `start.sh` — launches the simulator (downloads/loads the docker images on
   first run, then `docker compose up -d`). Run it from this directory.
 

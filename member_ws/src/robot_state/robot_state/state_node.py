@@ -10,10 +10,10 @@ import copy
 from functools import partial
 import threading
 
+from interfaces.msg import RobotState
+from interfaces.srv import GetRobotState
 from rclpy.node import Node
 from rclpy.time import Time
-from robot_state_interfaces.msg import RobotState
-from robot_state_interfaces.srv import GetRobotState
 from tf2_ros import Buffer, TransformListener
 
 from . import config
