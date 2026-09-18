@@ -231,9 +231,15 @@ class Observation:
             problems.append('clock moved behind observation')
         s.rate_known, s.rate_hz = self._rate(now_ns / 1e9)
         # An input with no expected rate is always rate_ok; there is nothing
-        # to be wrong about. Rate deliberately does not feed `valid`: a
-        # publisher running slow does not make the numbers it sent wrong, and
-        # a consumer that cares reads rate_ok on its own.
+        # to be wrong about.
+        #
+        # Rate deliberately does not feed `valid`. Issue #3 asks both that
+        # validity cover expected update rates and that old observations stay
+        # available and be marked stale, and those cannot both hold: a stalled
+        # input has a bad rate, so folding rate in would mark every stale
+        # observation invalid and `valid` would stop telling malformed data
+        # apart from a quiet publisher. The rate is still checked here and
+        # reported with its measured value, just not as a validity failure.
         s.rate_ok = s.expected_rate_hz == 0 or (
             s.rate_known and
             config.RATE_TOLERANCE_LOW * s.expected_rate_hz <= s.rate_hz
