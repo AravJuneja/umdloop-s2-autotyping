@@ -58,8 +58,7 @@ def test_live_query_latching_staleness_and_tf(separate_process):
     timers = []
     try:
         for name, spec in INPUTS.items():
-            publishers[name] = probe.create_publisher(
-                spec.ros_type, spec.topic, spec.qos)
+            publishers[name] = probe.create_publisher(spec.ros_type, spec.topic, spec.qos)
         # Published before the node exists: transient-local QoS means it
         # still has to receive them once it subscribes.
         for name in ('calibration', 'launch_key', 'tf_static'):
@@ -67,7 +66,8 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         if separate_process:
             process = subprocess.Popen(
                 [sys.executable, '-m', 'robot_state.robot_state'],
-                env={**os.environ, 'ROS_DOMAIN_ID': str(DOMAIN_ID)})
+                env={**os.environ, 'ROS_DOMAIN_ID': str(DOMAIN_ID)},
+            )
         else:
             adapter = StateNode(context=context)
             executor.add_node(adapter)
@@ -86,10 +86,15 @@ def test_live_query_latching_staleness_and_tf(separate_process):
             updates[name] = value
             counts[name] += 1
 
-        subscriptions = [probe.create_subscription(
-            spec.observation, f'/robot_state/updates/{name}',
-            partial(receive, name), LATCHED_QOS)
-            for name, spec in INPUTS.items()]
+        subscriptions = [
+            probe.create_subscription(
+                spec.observation,
+                f'/robot_state/updates/{name}',
+                partial(receive, name),
+                LATCHED_QOS,
+            )
+            for name, spec in INPUTS.items()
+        ]
         client = probe.create_client(GetRobotState, '/robot_state/get_state')
         assert client.wait_for_service(timeout_sec=10)
 
@@ -107,12 +112,18 @@ def test_live_query_latching_staleness_and_tf(separate_process):
                 msg.header.stamp = now
             publishers[name].publish(msg)
 
-        for name, interval in [('joints', .02), ('image', 1 / 15), ('tf', .02)]:
+        for name, interval in [('joints', 0.02), ('image', 1 / 15), ('tf', 0.02)]:
             timers.append(probe.create_timer(interval, partial(publish, name)))
-        spin_until(executor, lambda: all(
-            name in updates and updates[name].status.arrived
-            and updates[name].status.valid and updates[name].status.fresh
-            for name in INPUTS))
+        spin_until(
+            executor,
+            lambda: all(
+                name in updates
+                and updates[name].status.arrived
+                and updates[name].status.valid
+                and updates[name].status.fresh
+                for name in INPUTS
+            ),
+        )
         spin_until(executor, lambda: counts['joints'] >= 30 and counts['image'] >= 10)
         state = query()
         assert list(state.joints.names) == list(KNOWN_JOINTS)
@@ -124,13 +135,14 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         assert not state.launch_key.status.has_source_stamp
         if adapter:
             assert set(local_updates) == set(INPUTS)
-            assert all(value.status.arrived and value.status.valid
-                       for value in local_updates.values())
+            assert all(
+                value.status.arrived and value.status.valid for value in local_updates.values()
+            )
             assert local_updates['launch_key'].key == 'ROVER'
             assert adapter.get_state().launch_key.key == state.launch_key.key
             spin_until(
-                executor,
-                lambda: adapter.tf_buffer.can_transform('world', 'camera', Time()))
+                executor, lambda: adapter.tf_buffer.can_transform('world', 'camera', Time())
+            )
             assert adapter.tf_buffer.lookup_transform('world', 'camera', Time())
         assert len(subscriptions) == len(INPUTS)
         # Staleness and recovery are asserted once, in-process. Crossing a
@@ -147,25 +159,32 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         # the input stops being fresh, and separately its rate decays out of
         # band -- and each one is worth announcing.
         counts_before_stale = counts.copy()
-        spin_until(executor, lambda: all(
-            not updates[name].status.fresh and not updates[name].status.rate_ok
-            for name in ('joints', 'image', 'tf')))
+        spin_until(
+            executor,
+            lambda: all(
+                not updates[name].status.fresh and not updates[name].status.rate_ok
+                for name in ('joints', 'image', 'tf')
+            ),
+        )
         settled = counts.copy()
-        deadline = time.monotonic() + .5
+        deadline = time.monotonic() + 0.5
         while time.monotonic() < deadline:
-            executor.spin_once(timeout_sec=.02)
+            executor.spin_once(timeout_sec=0.02)
         # Once health has settled there is nothing left to say: continuing to
         # be stale is not an event.
         assert counts == settled
-        assert all(counts_before_stale[name] < settled[name]
-                   <= counts_before_stale[name] + 2
-                   for name in ('joints', 'image', 'tf'))
+        assert all(
+            counts_before_stale[name] < settled[name] <= counts_before_stale[name] + 2
+            for name in ('joints', 'image', 'tf')
+        )
         # Stale inputs keep their last value; latched ones never expire.
         stale = query()
         assert stale.joints.positions == state.joints.positions
         assert stale.image.pixels == state.image.pixels
-        assert all(getattr(stale, name).status.fresh
-                   for name in ('calibration', 'launch_key', 'tf_static'))
+        assert all(
+            getattr(stale, name).status.fresh
+            for name in ('calibration', 'launch_key', 'tf_static')
+        )
         invalid = message('launch_key')
         invalid.data = 'bad'
         publishers['launch_key'].publish(invalid)
@@ -174,8 +193,14 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         publishers['launch_key'].publish(message('launch_key'))
         for timer in timers:
             timer.reset()
-        spin_until(executor, lambda: updates['launch_key'].status.valid
-                   and updates['joints'].status.fresh and updates['image'].status.fresh)
+        spin_until(
+            executor,
+            lambda: (
+                updates['launch_key'].status.valid
+                and updates['joints'].status.fresh
+                and updates['image'].status.fresh
+            ),
+        )
     finally:
         if process:
             process.send_signal(signal.SIGINT)
@@ -206,10 +231,8 @@ def test_missing_inputs_are_announced_before_any_message_arrives():
     try:
         node.on_update(lambda name, value: seen.setdefault(name, value))
         spin_until(executor, lambda: set(seen) == set(INPUTS))
-        assert all(not value.status.arrived and not value.status.valid
-                   for value in seen.values())
-        assert all(list(value.status.problems) == ['missing']
-                   for value in seen.values())
+        assert all(not value.status.arrived and not value.status.valid for value in seen.values())
+        assert all(list(value.status.problems) == ['missing'] for value in seen.values())
         # Nothing arrived, so nothing can be said about the rate either.
         assert not any(value.status.rate_known for value in seen.values())
     finally:
