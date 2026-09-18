@@ -1,0 +1,5 @@
+ObservationStatus status
+string frame_id
+string[] names
+float64[] positions
+float64[] velocities

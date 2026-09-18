@@ -1,0 +1,2 @@
+ObservationStatus status
+string key
