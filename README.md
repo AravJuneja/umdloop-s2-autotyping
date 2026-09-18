@@ -54,3 +54,15 @@ the `sim/member_ws` symlink to `member_ws/` here.
 
 See `sim/docs/INFO.md` for the full simulator setup/reference and
 `sim/docs/INTERFACES.md` for the topic/message reference.
+
+## Checklist
+
+- [ ] Read the launch key from /sim/launch_key
+- [ ] Control the arm in closed loop from /joint_states, within its joint and velocity limits.
+- [ ] Determine the panel's position and orientation from the camera image.
+- [ ] Determine where the keys of the lanunch key are. Key positions are not provided 
+- [ ] Move the arm to a prose from which every character of the launch key can be pressed 
+- [ ] Aim at and press each character in order, then publish /sim/done 
+- [ ] type the launch key exactly, so /sim/result reports an exact match 
+- [ ] work on any episode seed without code changes. The panel's placement changes between episodes.
+- [ ] record detections, pose estimates, commands, and press decisions in an exportable log 
