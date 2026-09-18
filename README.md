@@ -10,10 +10,11 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
   fixed commit.
 - `member_ws/` — our actual code: the ROS 2 workspace for the typist node
   (`member_ws/src/...`). `member_ws/src/` is tracked in this repo; build
-  output (`build/`, `install/`, `log/`) is gitignored. Two packages so far:
+  output (`build/`, `install/`, `log/`) is gitignored. Three packages so far:
   `robot_state`, which normalizes the simulator's topics into one timestamped
-  view of the robot (see its own README), and `interfaces`, which holds every
-  message and service this workspace defines.
+  view of the robot; `panel_detect`, which finds the panel's four ArUco
+  markers in those frames; and `interfaces`, which holds every message and
+  service this workspace defines. The first two have their own READMEs.
 - `start.sh` — launches the simulator (downloads/loads the docker images on
   first run, then `docker compose up -d`). Run it from this directory.
 
