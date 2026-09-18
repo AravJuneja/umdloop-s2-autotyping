@@ -12,6 +12,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Transform.msg"
   "msg/TransformObservation.msg"
   "msg/RobotState.msg"
+  "msg/Pixel.msg"
+  "msg/MarkerDetection.msg"
+  "msg/MarkerDetections.msg"
   "srv/GetRobotState.srv"
   DEPENDENCIES builtin_interfaces
 )
