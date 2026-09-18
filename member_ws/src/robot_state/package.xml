@@ -6,7 +6,7 @@
   <maintainer email="victor.casado.nyc@gmail.com">Victor Casado</maintainer>
   <license>MIT</license>
   <depend>rclpy</depend>
-  <depend>robot_state_interfaces</depend>
+  <depend>interfaces</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2_ros</depend>

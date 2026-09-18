@@ -14,6 +14,7 @@ import sys
 import time
 
 from conftest import DOMAIN_ID, message
+from interfaces.srv import GetRobotState
 import pytest
 import rclpy
 from rclpy.context import Context
@@ -22,7 +23,6 @@ from rclpy.node import Node
 from rclpy.time import Time
 from robot_state.config import INPUTS, KNOWN_JOINTS, LATCHED_QOS
 from robot_state.state_node import StateNode
-from robot_state_interfaces.srv import GetRobotState
 
 
 def spin_until(executor, predicate, timeout=10):
@@ -138,7 +138,7 @@ def test_live_query_latching_staleness_and_tf(separate_process):
         # input expires, so re-running this against the subprocess would
         # only pay for a second node lifecycle to reach the same states.
         if separate_process:
-            assert process.poll() is None
+            assert process is not None and process.poll() is None
             return
         for timer in timers:
             timer.cancel()
@@ -202,7 +202,7 @@ def test_missing_inputs_are_announced_before_any_message_arrives():
     node = StateNode(context=context)
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(node)
-    seen = {}
+    seen: dict = {}
     try:
         node.on_update(lambda name, value: seen.setdefault(name, value))
         spin_until(executor, lambda: set(seen) == set(INPUTS))

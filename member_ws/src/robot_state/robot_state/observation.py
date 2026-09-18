@@ -13,7 +13,7 @@ import copy
 import math
 import re
 
-from robot_state_interfaces.msg import ObservationStatus, Transform
+from interfaces.msg import ObservationStatus, Transform
 
 from . import config
 

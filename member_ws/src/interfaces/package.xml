@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>robot_state_interfaces</name>
+  <name>interfaces</name>
   <version>0.1.0</version>
-  <description>Project-owned observations and robot-state snapshot service.</description>
+  <description>Project-owned messages and services, shared by every package in this workspace.</description>
   <maintainer email="victor.casado.nyc@gmail.com">Victor Casado</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

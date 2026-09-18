@@ -9,11 +9,11 @@ reconstructed from literals scattered through the callbacks.
 
 from typing import NamedTuple
 
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from robot_state_interfaces.msg import (
+from interfaces.msg import (
     CalibrationObservation, ImageObservation, JointObservation,
     LaunchKeyObservation, TransformObservation,
 )
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image, JointState
 from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
