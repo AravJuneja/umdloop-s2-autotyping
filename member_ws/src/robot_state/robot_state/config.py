@@ -108,11 +108,6 @@ RATE_WINDOW_SEC = 2.0
 RATE_MIN_OBSERVATION_SEC = 0.1
 
 # A stream counts as healthy between half and 1.5x its expected rate. Wide,
-# We refuse to report a rate until we have been listening this long. Without
-# it, the first message to arrive would divide by a near-zero period and claim
-# an absurd rate, and a stream one message old would be called dead.
-RATE_MIN_OBSERVATION_SEC = 0.1
-
 # because we are reporting "is this publisher alive and roughly on schedule",
 # not measuring jitter.
 RATE_TOLERANCE_LOW = 0.5
