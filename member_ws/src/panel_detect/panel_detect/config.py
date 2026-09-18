@@ -20,20 +20,28 @@ PANEL_MARKER_IDS = (0, 1, 2, 3)
 ARUCO_DICTIONARY = cv2.aruco.DICT_4X4_50
 
 # --- Corner refinement ----------------------------------------------------
-# Without refinement OpenCV returns integer corners, which puts a floor of
-# about a third of a pixel on everything downstream. At the home pose a
-# marker is roughly 21 px on a side -- about 4 px per module -- so the
-# default 5 px search window straddles two modules and pulls a corner toward
-# the wrong gradient. The method and window below were chosen by measuring
-# all three refinements against synthetic ground truth; test_detector.py runs
-# that comparison and the package README records the numbers.
-CORNER_REFINEMENT = cv2.aruco.CORNER_REFINE_SUBPIX
-CORNER_REFINEMENT_WIN_SIZE = 3
+# Without refinement OpenCV returns integer corners. At the home pose a
+# marker is roughly 21 px on a side -- about 4 px per module -- which is
+# small enough that the choice of refinement matters more than usual.
+#
+# All four were measured against synthetic ground truth; the package README
+# carries the table. Contour refinement wins on the number that matters,
+# marker-centre error, at 0.078 px RMS against 0.126 for sub-pixel and 0.197
+# for none. It pays for that with the largest systematic shrink of the
+# marker outline (-4.8% on the side), which a four-marker board fit mostly
+# ignores: the board's scale comes from the ~500 px between markers, not
+# from the 21 px across one. AprilTag refinement is the only one that gets
+# the outline right and the only one that moves the centre, by 0.64 px.
+#
+# Sub-pixel refinement also ignores cornerRefinementWinSize at this marker
+# size -- 2, 3 and 5 give bit-identical results -- so there is no window to
+# tune here even if we wanted one.
+CORNER_REFINEMENT = cv2.aruco.CORNER_REFINE_CONTOUR
 
-# The bound the synthetic precision test holds us to. It is the detector's
-# own error against a known homography, which is a stricter thing than the
-# spread you see on a live camera; the arm's idle drift is larger than this.
-MAX_CORNER_ERROR_PX = 0.25
+# What the synthetic precision test holds us to, at the 95th percentile of
+# marker-centre error. Measured p95 is 0.163 px, so this is the measurement
+# plus room for a different OpenCV build, not a target we are scraping past.
+MAX_CENTRE_ERROR_PX = 0.25
 
 # --- Topics ---------------------------------------------------------------
 # Frames come from robot_state rather than straight from the camera, so a
@@ -74,6 +82,7 @@ CORNER_COLOR = (0, 255, 255)
 ID_COLOR = (255, 255, 0)
 MISSING_COLOR = (0, 0, 255)
 CORNER_LABEL_OFFSET_PX = 10.0
+ID_LABEL_OFFSET_PX = 30.0
 FONT_SCALE = 0.4
 FONT_THICKNESS = 1
 

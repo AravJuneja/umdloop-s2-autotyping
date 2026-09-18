@@ -43,7 +43,6 @@ def make_detector():
     """Build the OpenCV detector once, so frames do not each pay for it."""
     parameters = cv2.aruco.DetectorParameters()
     parameters.cornerRefinementMethod = config.CORNER_REFINEMENT
-    parameters.cornerRefinementWinSize = config.CORNER_REFINEMENT_WIN_SIZE
     dictionary = cv2.aruco.getPredefinedDictionary(config.ARUCO_DICTIONARY)
     return cv2.aruco.ArucoDetector(dictionary, parameters)
 
@@ -117,8 +116,10 @@ def draw_overlay(image, result):
             else:
                 direction = np.zeros(2)
             _label(overlay, str(index), corner + direction, config.CORNER_COLOR)
+        # Clear of the corner labels, which sit about a marker half-diagonal
+        # out; at 21 px a marker that is roughly 15 px, and 0 and 1 are up here.
         _label(overlay, f'id {detection.marker_id}',
-               centre + np.array([0.0, -config.CORNER_LABEL_OFFSET_PX * 2]),
+               centre + np.array([0.0, -config.ID_LABEL_OFFSET_PX]),
                config.ID_COLOR)
     if result.missing_ids:
         missing = ', '.join(str(marker_id) for marker_id in result.missing_ids)

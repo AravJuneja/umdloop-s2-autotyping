@@ -53,12 +53,16 @@ jobs:
           . /opt/ros/jazzy/setup.sh
           colcon build --symlink-install
 
+      # One invocation per package. Each package has its own test_flake8.py
+      # and conftest.py, and pytest's default import mode cannot hold two
+      # modules of the same name in one process.
       - name: Test
         working-directory: member_ws
         run: |
           . /opt/ros/jazzy/setup.sh
           . install/setup.sh
-          python3 -m pytest src -q
+          python3 -m pytest src/robot_state/test -q
+          python3 -m pytest src/panel_detect/test -q
 
       - name: Types
         working-directory: member_ws
@@ -67,3 +71,5 @@ jobs:
           . install/setup.sh
           python3 -m mypy --ignore-missing-imports --check-untyped-defs \
             src/robot_state/robot_state src/robot_state/test
+          python3 -m mypy --ignore-missing-imports --check-untyped-defs \
+            src/panel_detect/panel_detect src/panel_detect/test
