@@ -94,6 +94,6 @@ jobs:
           for setup in src/*/setup.py; do
             package=${setup%/setup.py}
             python3 -m mypy --ignore-missing-imports --check-untyped-defs \
-              "$package" || status=1
+              "$package/${package##*/}" "$package/test" || status=1
           done
           exit "$status"
