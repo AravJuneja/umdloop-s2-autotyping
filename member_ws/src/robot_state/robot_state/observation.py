@@ -56,15 +56,13 @@ def normalize(name, msg):
         stamp = msg.header.stamp
         # Set equality plus the length check means each known joint appears
         # exactly once, which is what makes the reorder below safe.
-        if (len(msg.name) != config.JOINT_COUNT
-                or set(msg.name) != set(config.KNOWN_JOINTS)):
+        if len(msg.name) != config.JOINT_COUNT or set(msg.name) != set(config.KNOWN_JOINTS):
             problems.append('joint names must contain each known joint once')
         # velocity is optional in JointState; present means it must line up
         # with the names, absent means we publish nothing for it. effort is
         # deliberately not checked -- we do not republish it, and rejecting a
         # message over a field we discard would throw away good positions.
-        if (len(msg.position) != len(msg.name)
-                or len(msg.velocity) not in (0, len(msg.name))):
+        if len(msg.position) != len(msg.name) or len(msg.velocity) not in (0, len(msg.name)):
             problems.append('joint array lengths do not match names')
         if not finite((*msg.position, *msg.velocity)):
             problems.append('non-finite joint data')
@@ -85,9 +83,12 @@ def normalize(name, msg):
             problems.append(f'supported image encoding is {config.IMAGE_ENCODING}')
         # step is the stride in bytes, which may exceed width*channels when
         # rows are padded; the buffer has to match height*step either way.
-        if (not msg.width or not msg.height
-                or msg.step < msg.width * config.IMAGE_CHANNELS
-                or len(msg.data) != msg.height * msg.step):
+        if (
+            not msg.width
+            or not msg.height
+            or msg.step < msg.width * config.IMAGE_CHANNELS
+            or len(msg.data) != msg.height * msg.step
+        ):
             problems.append('invalid image dimensions, stride, or byte count')
         if msg.is_bigendian not in (0, 1):
             problems.append('invalid image endian flag')
@@ -103,17 +104,26 @@ def normalize(name, msg):
         # K is [fx 0 cx; 0 fy cy; 0 0 1]: focal lengths must be positive, the
         # principal point must land inside the image, and the scale term must
         # be 1, or projecting a pixel into the world produces nonsense.
-        if (not msg.width or not msg.height or not msg.header.frame_id
-                or not finite((*msg.k, *msg.d))
-                or msg.k[0] <= 0 or msg.k[4] <= 0
-                or abs(msg.k[8] - 1.0) > config.INTRINSIC_SCALE_TOLERANCE
-                or not 0 <= msg.k[2] < msg.width or not 0 <= msg.k[5] < msg.height):
+        if (
+            not msg.width
+            or not msg.height
+            or not msg.header.frame_id
+            or not finite((*msg.k, *msg.d))
+            or msg.k[0] <= 0
+            or msg.k[4] <= 0
+            or abs(msg.k[8] - 1.0) > config.INTRINSIC_SCALE_TOLERANCE
+            or not 0 <= msg.k[2] < msg.width
+            or not 0 <= msg.k[5] < msg.height
+        ):
             problems.append('invalid calibration dimensions, frame, or matrices')
-        if (msg.distortion_model != config.DISTORTION_MODEL
-                or len(msg.d) != config.DISTORTION_COEFFICIENTS):
+        if (
+            msg.distortion_model != config.DISTORTION_MODEL
+            or len(msg.d) != config.DISTORTION_COEFFICIENTS
+        ):
             problems.append(
                 f'supported calibration is {config.DISTORTION_MODEL} with '
-                f'{config.DISTORTION_COEFFICIENTS} coefficients')
+                f'{config.DISTORTION_COEFFICIENTS} coefficients'
+            )
     elif name == 'launch_key':
         value.key = msg.data
         if re.fullmatch(config.LAUNCH_KEY_PATTERN, msg.data) is None:
@@ -129,23 +139,29 @@ def normalize(name, msg):
             xyz, xyzw = [t.x, t.y, t.z], [q.x, q.y, q.z, q.w]
             # A frame parented to itself, or two transforms claiming the same
             # child, would make the TF tree ambiguous.
-            if (not item.header.frame_id or not item.child_frame_id
-                    or item.header.frame_id == item.child_frame_id
-                    or item.child_frame_id in children
-                    or not finite((*xyz, *xyzw))
-                    or abs(sum(v * v for v in xyzw) - 1.0)
-                    > config.QUATERNION_NORM_TOLERANCE):
+            if (
+                not item.header.frame_id
+                or not item.child_frame_id
+                or item.header.frame_id == item.child_frame_id
+                or item.child_frame_id in children
+                or not finite((*xyz, *xyzw))
+                or abs(sum(v * v for v in xyzw) - 1.0) > config.QUATERNION_NORM_TOLERANCE
+            ):
                 problems.append('invalid transform frames, translation, or quaternion')
                 continue
             if not valid_stamp(item.header.stamp):
                 problems.append('invalid transform timestamp')
                 continue
             children.add(item.child_frame_id)
-            value.transforms.append(Transform(
-                source_stamp=copy.deepcopy(item.header.stamp),
-                parent_frame=item.header.frame_id, child_frame=item.child_frame_id,
-                translation=xyz, rotation_xyzw=xyzw,
-            ))
+            value.transforms.append(
+                Transform(
+                    source_stamp=copy.deepcopy(item.header.stamp),
+                    parent_frame=item.header.frame_id,
+                    child_frame=item.child_frame_id,
+                    translation=xyz,
+                    rotation_xyzw=xyzw,
+                )
+            )
         # The batch is only as fresh as its oldest accepted transform, and a
         # rejected one must not be allowed to make the batch look newer.
         if value.transforms:
@@ -167,11 +183,14 @@ class Observation:
         spec = config.INPUTS[name]
         self._name = name
         latched = spec.freshness_sec is None
-        self.value = spec.observation(status=ObservationStatus(
-            source=config.SOURCE, latched=latched,
-            freshness_sec=0.0 if latched else spec.freshness_sec,
-            expected_rate_hz=spec.expected_rate_hz,
-        ))
+        self.value = spec.observation(
+            status=ObservationStatus(
+                source=config.SOURCE,
+                latched=latched,
+                freshness_sec=0.0 if latched else spec.freshness_sec,
+                expected_rate_hz=spec.expected_rate_hz,
+            )
+        )
         self.arrivals: deque[float] = deque(maxlen=config.ARRIVAL_HISTORY)
         self.problems = []
 
@@ -217,17 +236,18 @@ class Observation:
         s.received_age_sec = (now_ns - nanoseconds(s.received_stamp)) / 1e9
         # Age is measured from the source stamp when there is one, so a
         # message delayed in transit is not mistaken for current data.
-        s.age_sec = (now_ns - nanoseconds(
-            s.source_stamp if s.has_source_stamp else s.received_stamp)) / 1e9
+        s.age_sec = (
+            now_ns - nanoseconds(s.source_stamp if s.has_source_stamp else s.received_stamp)
+        ) / 1e9
         # Both ages must be inside the window: a message that just arrived is
         # still stale if the data inside it is old. Latched inputs never expire.
-        s.fresh = (s.received_age_sec >= 0
-                   and s.age_sec >= -config.CLOCK_SKEW_TOLERANCE_SEC
-                   and (s.latched
-                        or max(s.age_sec, s.received_age_sec) <= s.freshness_sec))
+        s.fresh = (
+            s.received_age_sec >= 0
+            and s.age_sec >= -config.CLOCK_SKEW_TOLERANCE_SEC
+            and (s.latched or max(s.age_sec, s.received_age_sec) <= s.freshness_sec)
+        )
         problems = list(self.problems)
-        if (s.received_age_sec < 0
-                or s.age_sec < -config.CLOCK_SKEW_TOLERANCE_SEC):
+        if s.received_age_sec < 0 or s.age_sec < -config.CLOCK_SKEW_TOLERANCE_SEC:
             problems.append('clock moved behind observation')
         s.rate_known, s.rate_hz = self._rate(now_ns / 1e9)
         # An input with no expected rate is always rate_ok; there is nothing
@@ -241,9 +261,11 @@ class Observation:
         # apart from a quiet publisher. The rate is still checked here and
         # reported with its measured value, just not as a validity failure.
         s.rate_ok = s.expected_rate_hz == 0 or (
-            s.rate_known and
-            config.RATE_TOLERANCE_LOW * s.expected_rate_hz <= s.rate_hz
-            <= config.RATE_TOLERANCE_HIGH * s.expected_rate_hz)
+            s.rate_known
+            and config.RATE_TOLERANCE_LOW * s.expected_rate_hz
+            <= s.rate_hz
+            <= config.RATE_TOLERANCE_HIGH * s.expected_rate_hz
+        )
         s.valid = not problems
         s.problems = problems
         return s

@@ -21,7 +21,6 @@ from .observation import Observation
 
 
 class StateNode(Node):
-
     def __init__(self, **kwargs):
         super().__init__('robot_state', **kwargs)
         # _lock guards the observations, so a snapshot taken for the service
@@ -42,8 +41,7 @@ class StateNode(Node):
         # Latched, so a consumer that starts after us immediately sees the
         # current value of every input instead of waiting for the next message.
         self._update_publishers = {
-            name: self.create_publisher(spec.observation, f'~/updates/{name}',
-                                        config.LATCHED_QOS)
+            name: self.create_publisher(spec.observation, f'~/updates/{name}', config.LATCHED_QOS)
             for name, spec in config.INPUTS.items()
         }
         # Our own TF buffer, fed by the standard listener rather than by our
@@ -53,7 +51,8 @@ class StateNode(Node):
         self._tf_listener = TransformListener(self.tf_buffer, self)
         self._input_subscriptions = [
             self.create_subscription(
-                spec.ros_type, spec.topic, partial(self._on_message, name), spec.qos)
+                spec.ros_type, spec.topic, partial(self._on_message, name), spec.qos
+            )
             for name, spec in config.INPUTS.items()
         ]
         self._service = self.create_service(GetRobotState, '~/get_state', self._query)
@@ -61,7 +60,8 @@ class StateNode(Node):
         self.create_timer(config.LOG_TICK_SEC, self._log_status)
         self.get_logger().info(
             f'joints={",".join(config.KNOWN_JOINTS)}; '
-            'updates=~/updates/{input}; query=~/get_state')
+            'updates=~/updates/{input}; query=~/get_state'
+        )
 
     def get_state(self):
         """Snapshot every input against a single clock reading.
@@ -72,10 +72,13 @@ class StateNode(Node):
         """
         with self._lock:
             now = self.get_clock().now().to_msg()
-            return RobotState(sampled_at=now, **{
-                name: observation.snapshot(now)
-                for name, observation in self._observations.items()
-            })
+            return RobotState(
+                sampled_at=now,
+                **{
+                    name: observation.snapshot(now)
+                    for name, observation in self._observations.items()
+                },
+            )
 
     def on_update(self, callback):
         """Register an in-process consumer, called with (name, observation)."""
@@ -157,24 +160,32 @@ class StateNode(Node):
         for name in config.INPUTS:
             value = getattr(state, name)
             s = value.status
-            health = 'MISSING' if not s.arrived else (
-                'STALE' if not s.fresh else 'fresh')
+            health = 'MISSING' if not s.arrived else ('STALE' if not s.fresh else 'fresh')
             parts.append(
                 f'{name}={health} valid={s.valid} age={s.age_sec:.3f}s '
                 f'rate={s.rate_hz:.1f}/{s.expected_rate_hz:g}Hz '
-                f'problems={list(s.problems)}')
+                f'problems={list(s.problems)}'
+            )
         # The names actually arriving, not the ones we expect: if the
         # simulator renames a joint, this line is where it shows up.
         parts.append('joint_names=' + ','.join(state.joints.names))
-        parts.append(f'image={state.image.width}x{state.image.height} '
-                     f'{state.image.encoding} frame={state.image.frame_id}')
+        parts.append(
+            f'image={state.image.width}x{state.image.height} '
+            f'{state.image.encoding} frame={state.image.frame_id}'
+        )
         parts.append(f'calibration_frame={state.calibration.frame_id}')
         parts.append(f'launch_key={state.launch_key.key}')
-        parts.append('tf_frames=' + ','.join(
-            f'{t.parent_frame}->{t.child_frame}'
-            for value in (state.tf, state.tf_static) for t in value.transforms))
+        parts.append(
+            'tf_frames='
+            + ','.join(
+                f'{t.parent_frame}->{t.child_frame}'
+                for value in (state.tf, state.tf_static)
+                for t in value.transforms
+            )
+        )
         # Proves the tree actually connects end to end, which the individual
         # transforms above do not.
-        parts.append('tf_lookup=' + str(self.tf_buffer.can_transform(
-            *config.TF_LOOKUP_CHECK, Time())))
+        parts.append(
+            'tf_lookup=' + str(self.tf_buffer.can_transform(*config.TF_LOOKUP_CHECK, Time()))
+        )
         self.get_logger().info(' | '.join(parts))
