@@ -1,0 +1,69 @@
+# Builds the workspace and runs its tests on every push and pull request.
+#
+# The simulator is not involved: nothing here needs the sim submodule, the
+# 364 MB image tarball, or a running episode. The tests that talk to a ROS
+# graph bring up their own nodes on an isolated domain id.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    # The same base the dev container uses, so a green run here means the
+    # same thing as a green run in docker. Dependencies below mirror
+    # sim/docker/Dockerfile; when that file changes, this one follows.
+    container: ros:jazzy-ros-base
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3-pip \
+            python3-numpy \
+            python3-pytest \
+            ros-jazzy-ament-flake8 \
+            ros-jazzy-geometry-msgs \
+            ros-jazzy-rosidl-default-generators \
+            ros-jazzy-rosidl-default-runtime \
+            ros-jazzy-sensor-msgs \
+            ros-jazzy-std-msgs \
+            ros-jazzy-std-srvs \
+            ros-jazzy-tf2-ros \
+            ros-jazzy-tf2-ros-py
+          rm -rf /var/lib/apt/lists/*
+          # opencv from pip, not apt: Ubuntu ships 4.6, which predates
+          # cv2.aruco.ArucoDetector. numpy is held below 2 to match the
+          # apt-provided ROS Python bindings. mypy is pinned so CI and the
+          # dev container report the same errors.
+          pip3 install --break-system-packages --no-cache-dir \
+            "numpy<2" \
+            "opencv-contrib-python-headless==4.10.0.84" \
+            "mypy==1.9.0"
+
+      - name: Build
+        working-directory: member_ws
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          colcon build --symlink-install
+
+      - name: Test
+        working-directory: member_ws
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          . install/setup.sh
+          python3 -m pytest src -q
+
+      - name: Types
+        working-directory: member_ws
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          . install/setup.sh
+          python3 -m mypy --ignore-missing-imports --check-untyped-defs \
+            src/robot_state/robot_state src/robot_state/test
