@@ -12,7 +12,13 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     """Build the launch description for a single robot_state node."""
-    return LaunchDescription([
-        Node(package='robot_state', executable='robot_state',
-             name='robot_state', output='screen'),
-    ])
+    return LaunchDescription(
+        [
+            Node(
+                package='robot_state',
+                executable='robot_state',
+                name='robot_state',
+                output='screen',
+            ),
+        ]
+    )

@@ -86,15 +86,21 @@ def test_joints_reordered_by_name_and_owned():
     msg.position[0] = 100.0
     value = observation.snapshot(stamp())
     assert list(value.names) == list(KNOWN_JOINTS)
-    assert list(value.positions) == [4., 3., 2., 1., 0.]
-    assert list(value.velocities) == [9., 8., 7., 6., 5.]
+    assert list(value.positions) == [4.0, 3.0, 2.0, 1.0, 0.0]
+    assert list(value.velocities) == [9.0, 8.0, 7.0, 6.0, 5.0]
 
 
-@pytest.mark.parametrize('field,value', [
-    ('name', ['unknown'] * 5), ('name', [KNOWN_JOINTS[0]] * 5),
-    ('position', [0.]), ('velocity', [0.]),
-    ('position', [float('nan')] * 5), ('velocity', [float('inf')] * 5),
-])
+@pytest.mark.parametrize(
+    'field,value',
+    [
+        ('name', ['unknown'] * 5),
+        ('name', [KNOWN_JOINTS[0]] * 5),
+        ('position', [0.0]),
+        ('velocity', [0.0]),
+        ('position', [float('nan')] * 5),
+        ('velocity', [float('inf')] * 5),
+    ],
+)
 def test_invalid_joints(field, value):
     msg = message('joints')
     setattr(msg, field, value)
@@ -115,13 +121,20 @@ def test_garbage_effort_does_not_invalidate_positions():
     msg.effort = [float('nan')] * 3
     result = observe('joints', msg).snapshot(stamp())
     assert result.status.valid
-    assert list(result.positions) == [0., 1., 2., 3., 4.]
+    assert list(result.positions) == [0.0, 1.0, 2.0, 3.0, 4.0]
 
 
-@pytest.mark.parametrize('field,value', [
-    ('encoding', 'rgb8'), ('width', 0), ('height', 0), ('step', 5),
-    ('data', b'123'), ('is_bigendian', 2),
-])
+@pytest.mark.parametrize(
+    'field,value',
+    [
+        ('encoding', 'rgb8'),
+        ('width', 0),
+        ('height', 0),
+        ('step', 5),
+        ('data', b'123'),
+        ('is_bigendian', 2),
+    ],
+)
 def test_invalid_image(field, value):
     msg = message('image')
     setattr(msg, field, value)
@@ -140,10 +153,16 @@ def test_camera_frame_required(name):
     assert not observe(name, msg).snapshot(stamp()).status.valid
 
 
-@pytest.mark.parametrize('field,value', [
-    ('width', 0), ('distortion_model', 'unknown'), ('d', []),
-    ('k', [float('nan')] * 9), ('k', [0.] * 9),
-])
+@pytest.mark.parametrize(
+    'field,value',
+    [
+        ('width', 0),
+        ('distortion_model', 'unknown'),
+        ('d', []),
+        ('k', [float('nan')] * 9),
+        ('k', [0.0] * 9),
+    ],
+)
 def test_invalid_calibration(field, value):
     msg = message('calibration')
     setattr(msg, field, value)
@@ -201,7 +220,7 @@ def test_update_rate_and_recovery():
     observation = Observation('joints')
     for i in range(60):
         msg = message('joints')
-        msg.header.stamp = stamp(10 + i * .02)
+        msg.header.stamp = stamp(10 + i * 0.02)
         observation.update(msg, msg.header.stamp)
     status = observation.snapshot(stamp(11.18)).status
     assert status.rate_known and status.rate_ok and status.valid
@@ -210,7 +229,7 @@ def test_update_rate_and_recovery():
     dead = observation.snapshot(stamp(20)).status
     assert dead.rate_known and dead.rate_hz == 0 and not dead.rate_ok
     for i in range(3):
-        msg.header.stamp = stamp(20 + i * .2)
+        msg.header.stamp = stamp(20 + i * 0.2)
         observation.update(msg, msg.header.stamp)
     # Running at 5 Hz instead of 50 is a stream problem, not a data problem:
     # the positions in the message are still exactly what was sent.
@@ -218,7 +237,7 @@ def test_update_rate_and_recovery():
     assert status.fresh and status.valid and not status.rate_ok
     assert status.problems == []
     for i in range(120):
-        msg.header.stamp = stamp(21 + i * .02)
+        msg.header.stamp = stamp(21 + i * 0.02)
         observation.update(msg, msg.header.stamp)
     recovered = observation.snapshot(msg.header.stamp).status
     assert recovered.valid and recovered.rate_ok
@@ -229,12 +248,11 @@ def test_rate_decays_while_the_publisher_is_silent():
     observation = Observation('joints')
     for i in range(50):
         msg = message('joints')
-        msg.header.stamp = stamp(10 + i * .02)
+        msg.header.stamp = stamp(10 + i * 0.02)
         observation.update(msg, msg.header.stamp)
     # Nothing arrives after 10.98.
-    assert observation.snapshot(stamp(11)).status.rate_hz == pytest.approx(50, rel=.05)
-    decaying = [observation.snapshot(stamp(t)).status.rate_hz
-                for t in (11.5, 12.0, 12.5)]
+    assert observation.snapshot(stamp(11)).status.rate_hz == pytest.approx(50, rel=0.05)
+    decaying = [observation.snapshot(stamp(t)).status.rate_hz for t in (11.5, 12.0, 12.5)]
     assert decaying == sorted(decaying, reverse=True)
     assert decaying[-1] < 25
 

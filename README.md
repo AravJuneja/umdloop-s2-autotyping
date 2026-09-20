@@ -49,6 +49,20 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
    tracked content here, `sim/` stays untouched at its pinned submodule
    commit.
 
+## Python Formatting
+
+Install the pinned formatter in your Python environment and run it from the repo root:
+
+```bash
+python -m pip install ruff==0.16.8
+ruff format member_ws/src
+ruff format --check member_ws/src
+```
+
+Ruff uses single quotes and a 99-character line length. Only Python files under
+`member_ws/src/` are in scope; `sim/` is excluded. The separate `format` CI workflow
+checks formatting without replacing the existing lint and type checks.
+
 Note: `sim/docs/INFO.md` refers to paths like
 `~/AutoTypingChallengeSim/member_ws/...` — in this repo those resolve through
 the `sim/member_ws` symlink to `member_ws/` here.

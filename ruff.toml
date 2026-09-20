@@ -1,0 +1,8 @@
+required-version = "==0.16.8"
+line-length = 99
+include = ["member_ws/src/**/*.py"]
+extend-exclude = ["sim"]
+force-exclude = true
+
+[format]
+quote-style = "single"
