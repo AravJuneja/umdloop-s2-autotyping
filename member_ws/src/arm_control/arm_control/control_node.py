@@ -62,6 +62,11 @@ class ArmControlNode(Node):
             handle_accepted_callback=self._on_accepted,
             callback_group=callback_group,
         )
+        self.create_timer(
+            config.CONTROL_PERIOD_SEC,
+            self._publish_idle_zero,
+            callback_group=callback_group,
+        )
         self.get_logger().info(
             'joints=/robot_state/updates/joints; cmd=/arm/cmd_joint_velocity; '
             'action=~/move_joints; status=~/status')
@@ -214,6 +219,12 @@ class ArmControlNode(Node):
         (INTERFACES.md 8.5 rule 3) -- stopping the arm means naming every one.
         """
         self._publish_command(list(config.KNOWN_JOINTS), [0.0] * config.JOINT_COUNT)
+
+    def _publish_idle_zero(self):
+        """Keep an intentional stop distinct from a dead controller."""
+        with self._goal_lock:
+            if self._goal_handle is None:
+                self._publish_zero_all()
 
     def _publish_status(self, state, target=None, problems=None):
         with self._state_lock:
