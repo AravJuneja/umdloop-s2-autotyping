@@ -29,7 +29,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'panel_detect = panel_detect.panel_detect:main'
+            'panel_detect = panel_detect.panel_detect:main',
+            'key_projector = panel_detect.key_positions:main'
         ],
     },
 )

@@ -10,6 +10,8 @@
   <depend>sensor_msgs</depend>
   <depend>std_srvs</depend>
   <depend>python3-numpy</depend>
+  <depend>autotype_sim</depend>
+  <depend>tf2_ros</depend>
   <!-- OpenCV is deliberately not declared: rosdep would resolve it to the
        Ubuntu python3-opencv package, which is 4.6 and predates
        cv2.aruco.ArucoDetector. The environment provides
