@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MarkerDetection.msg"
   "msg/MarkerDetections.msg"
   "msg/ArmStatus.msg"
+  "msg/KeyPositions.msg"
   "srv/GetRobotState.srv"
   "action/MoveJoints.action"
   DEPENDENCIES builtin_interfaces action_msgs

@@ -34,9 +34,15 @@ import cv2
 import numpy as np
 import rclpy
 from autotype_sim.core.keymap import KeyMap, generate_tkl
-from interfaces.msg import CalibrationObservation, ImageObservation, MarkerDetections
+from interfaces.msg import (
+    CalibrationObservation,
+    ImageObservation,
+    KeyPositions,
+    MarkerDetections,
+)
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from tf2_ros import Buffer, TransformListener
 
 from . import detector
 
@@ -60,6 +66,7 @@ MARKER_CENTERS_BOARD = {
 CALIBRATION_TOPIC = '/robot_state/updates/calibration'
 IMAGE_TOPIC = '/robot_state/updates/image'
 DETECTIONS_TOPIC = '/panel_detect/detections'
+KEY_POSITIONS_TOPIC = '~/key_positions'
 
 # robot_state publishes every ~/updates/<input> on this exact profile
 # (robot_state/config.py: LATCHED_QOS), image included -- a late subscriber
@@ -191,6 +198,9 @@ class KeyProjector(Node):
         self._key_area_n = 0
         self._key_area_mean = np.zeros(2)
         self._key_area_m2 = np.zeros(2)  # Welford's running sum of squared deviations
+        self._tf = Buffer(node=self)
+        self._tf_listener = TransformListener(self._tf, self)
+        self._pub_keys = self.create_publisher(KeyPositions, KEY_POSITIONS_TOPIC, UPDATES_QOS)
 
         self.create_subscription(
             CalibrationObservation, CALIBRATION_TOPIC, self._on_calibration, UPDATES_QOS)
@@ -276,6 +286,38 @@ class KeyProjector(Node):
         self.key_points_board = np.array(
             [[*KeyMap.center(key), 0.0] for key in keymap.keys], dtype=np.float64)
 
+    @staticmethod
+    def _quat_to_mat(q):
+        x, y, z, w = q.x, q.y, q.z, q.w
+        return np.array([
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ])
+
+    def _publish_world_keys(self, stamp):
+        """Board-frame key centres -> world, via solvePnP pose + TF."""
+        R_cb, _ = cv2.Rodrigues(self.rvec)
+        t_cb = self.tvec.reshape(3)
+        try:
+            lookup = self._tf.lookup_transform('world', 'camera_optical_frame', stamp)
+        except Exception as error:
+            self.get_logger().warning(f'no world->camera transform: {error}', throttle_duration_sec=5.0)
+            return
+        R_wc = self._quat_to_mat(lookup.transform.rotation)
+        t = lookup.transform.translation
+        t_wc = np.array([t.x, t.y, t.z])
+        pts_cam = (self.key_points_board @ R_cb.T) + t_cb
+        pts_world = (pts_cam @ R_wc.T) + t_wc
+        msg = KeyPositions()
+        msg.stamp = stamp.to_msg() if hasattr(stamp, 'to_msg') else stamp
+        msg.frame_id = 'world'
+        msg.name = list(self.key_names)
+        msg.x = [float(v) for v in pts_world[:, 0]]
+        msg.y = [float(v) for v in pts_world[:, 1]]
+        msg.z = [float(v) for v in pts_world[:, 2]]
+        self._pub_keys.publish(msg)
+
     def _on_image(self, observation):
         status = observation.status
         if not (status.valid and status.fresh) or self.rvec is None:
@@ -293,6 +335,12 @@ class KeyProjector(Node):
                 f'key grid not yet located ({self._key_area_n} measurements so far)',
                 throttle_duration_sec=5.0)
             return
+
+        from rclpy.time import Time
+
+        source = observation.status
+        stamp = source.source_stamp if source.has_source_stamp else source.received_stamp
+        self._publish_world_keys(Time.from_msg(stamp))
 
         image_points, _ = cv2.projectPoints(
             self.key_points_board, self.rvec, self.tvec, self.K, self.D)
