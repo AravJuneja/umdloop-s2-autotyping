@@ -33,15 +33,23 @@ def stamp(value=10.0):
 def message(name):
     """Build a minimal valid message for one input, for tests to then corrupt."""
     if name == 'joints':
-        msg = JointState(name=list(KNOWN_JOINTS), position=[0., 1., 2., 3., 4.],
-                         velocity=[5., 6., 7., 8., 9.])
+        msg = JointState(
+            name=list(KNOWN_JOINTS),
+            position=[0.0, 1.0, 2.0, 3.0, 4.0],
+            velocity=[5.0, 6.0, 7.0, 8.0, 9.0],
+        )
     elif name == 'image':
         msg = Image(width=2, height=2, encoding='bgr8', step=8, data=bytes(range(16)))
     elif name == 'calibration':
-        msg = CameraInfo(width=2, height=2, distortion_model='plumb_bob', d=[0.] * 5,
-                         k=[9., 0., .5, 0., 9., .5, 0., 0., 1.],
-                         r=[1., 0., 0., 0., 1., 0., 0., 0., 1.],
-                         p=[9., 0., .5, 0., 0., 9., .5, 0., 0., 0., 1., 0.])
+        msg = CameraInfo(
+            width=2,
+            height=2,
+            distortion_model='plumb_bob',
+            d=[0.0] * 5,
+            k=[9.0, 0.0, 0.5, 0.0, 9.0, 0.5, 0.0, 0.0, 1.0],
+            r=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            p=[9.0, 0.0, 0.5, 0.0, 0.0, 9.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.0],
+        )
     elif name == 'launch_key':
         return String(data='ROVER')
     else:

@@ -1,0 +1,37 @@
+# Drive the arm to a joint-space pose and hold it there. This is the only way
+# to ask arm_control for motion -- callers state a pose, never a velocity.
+#
+# Goal
+# ----
+# name/position are parallel arrays, matching the convention of
+# JointVelocityCommand: order does not matter, but every one of the five
+# known joints (base_yaw, shoulder_pitch, elbow_pitch, head_pan, head_tilt)
+# must appear exactly once. There is no partial-pose goal -- a caller that
+# only cares about the head still states where the base should stay, so a
+# new goal can never leave a joint drifting on an old target.
+string[] name
+float64[] position
+---
+# Result
+# ------
+# state is the terminal value of the same enum ~/status and the feedback
+# below use: MOVING, SETTLED, STOPPED, FAULTED (see ArmStatus.msg). SETTLED
+# is the only success; STOPPED means a newer goal or a cancel preempted this
+# one before it settled; FAULTED means the joint-state input went stale or
+# invalid before this goal settled. MOVING never appears here -- it is not a
+# terminal state.
+string state
+string[] name
+float64[] position
+---
+# Feedback
+# --------
+# Published on every control tick this goal is active for. state is always
+# MOVING here -- ~/status is where SETTLED/STOPPED/FAULTED show up, since
+# none of them describe an in-progress goal. error is position - target, in
+# the same order as name.
+string state
+string[] name
+float64[] position
+float64[] velocity
+float64[] error

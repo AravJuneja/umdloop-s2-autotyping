@@ -49,9 +49,35 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
    tracked content here, `sim/` stays untouched at its pinned submodule
    commit.
 
+## Python Formatting
+
+Install the pinned formatter in your Python environment and run it from the repo root:
+
+```bash
+python -m pip install ruff==0.16.8
+ruff format member_ws/src
+ruff format --check member_ws/src
+```
+
+Ruff uses single quotes and a 99-character line length. Only Python files under
+`member_ws/src/` are in scope; `sim/` is excluded. The separate `format` CI workflow
+checks formatting without replacing the existing lint and type checks.
+
 Note: `sim/docs/INFO.md` refers to paths like
 `~/AutoTypingChallengeSim/member_ws/...` — in this repo those resolve through
 the `sim/member_ws` symlink to `member_ws/` here.
 
 See `sim/docs/INFO.md` for the full simulator setup/reference and
 `sim/docs/INTERFACES.md` for the topic/message reference.
+
+## Checklist
+
+- [ ] Read the launch key from /sim/launch_key
+- [x] Control the arm in closed loop from /joint_states, within its joint and velocity limits.
+- [ ] Determine the panel's position and orientation from the camera image.
+- [ ] Determine where the keys of the lanunch key are. Key positions are not provided 
+- [ ] Move the arm to a prose from which every character of the launch key can be pressed 
+- [ ] Aim at and press each character in order, then publish /sim/done 
+- [ ] type the launch key exactly, so /sim/result reports an exact match 
+- [ ] work on any episode seed without code changes. The panel's placement changes between episodes.
+- [ ] record detections, pose estimates, commands, and press decisions in an exportable log 
