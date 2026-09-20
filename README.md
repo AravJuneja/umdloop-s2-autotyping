@@ -58,7 +58,7 @@ See `sim/docs/INFO.md` for the full simulator setup/reference and
 ## Checklist
 
 - [ ] Read the launch key from /sim/launch_key
-- [ ] Control the arm in closed loop from /joint_states, within its joint and velocity limits.
+- [x] Control the arm in closed loop from /joint_states, within its joint and velocity limits.
 - [ ] Determine the panel's position and orientation from the camera image.
 - [ ] Determine where the keys of the lanunch key are. Key positions are not provided 
 - [ ] Move the arm to a prose from which every character of the launch key can be pressed 
