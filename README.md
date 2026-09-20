@@ -10,10 +10,11 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
   fixed commit.
 - `member_ws/` — our actual code: the ROS 2 workspace for the typist node
   (`member_ws/src/...`). `member_ws/src/` is tracked in this repo; build
-  output (`build/`, `install/`, `log/`) is gitignored. Two packages so far:
+  output (`build/`, `install/`, `log/`) is gitignored. Three packages so far:
   `robot_state`, which normalizes the simulator's topics into one timestamped
-  view of the robot (see its own README), and `interfaces`, which holds every
-  message and service this workspace defines.
+  view of the robot; `panel_detect`, which finds the panel's four ArUco
+  markers in those frames; and `interfaces`, which holds every message and
+  service this workspace defines. The first two have their own READMEs.
 - `start.sh` — launches the simulator (downloads/loads the docker images on
   first run, then `docker compose up -d`). Run it from this directory.
 
@@ -47,6 +48,20 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
 6. Commit and push from this repo as usual — `member_ws/src/` is regular
    tracked content here, `sim/` stays untouched at its pinned submodule
    commit.
+
+## Python Formatting
+
+Install the pinned formatter in your Python environment and run it from the repo root:
+
+```bash
+python -m pip install ruff==0.16.8
+ruff format member_ws/src
+ruff format --check member_ws/src
+```
+
+Ruff uses single quotes and a 99-character line length. Only Python files under
+`member_ws/src/` are in scope; `sim/` is excluded. The separate `format` CI workflow
+checks formatting without replacing the existing lint and type checks.
 
 Note: `sim/docs/INFO.md` refers to paths like
 `~/AutoTypingChallengeSim/member_ws/...` — in this repo those resolve through

@@ -1,17 +1,18 @@
-"""Package definition for robot_state."""
+"""Package definition for panel_detect."""
 
 from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = 'robot_state'
+package_name = 'panel_detect'
 
 setup(
     name=package_name,
     version='0.1.0',
     packages=find_packages(exclude=['test']),
     data_files=[
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
+        ('share/ament_index/resource_index/packages',
+            ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
     ],
@@ -19,7 +20,7 @@ setup(
     zip_safe=True,
     maintainer='Victor Casado',
     maintainer_email='victor.casado.nyc@gmail.com',
-    description='Normalize simulator inputs into timestamped robot observations.',
+    description="Find the panel's ArUco markers in the camera image.",
     license='MIT',
     extras_require={
         'test': [
@@ -27,6 +28,8 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': ['robot_state = robot_state.robot_state:main'],
+        'console_scripts': [
+            'panel_detect = panel_detect.panel_detect:main'
+        ],
     },
 )

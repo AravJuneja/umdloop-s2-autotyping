@@ -10,8 +10,11 @@ reconstructed from literals scattered through the callbacks.
 from typing import NamedTuple
 
 from interfaces.msg import (
-    CalibrationObservation, ImageObservation, JointObservation,
-    LaunchKeyObservation, TransformObservation,
+    CalibrationObservation,
+    ImageObservation,
+    JointObservation,
+    LaunchKeyObservation,
+    TransformObservation,
 )
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image, JointState
@@ -26,7 +29,11 @@ SOURCE = 'simulator'
 # regardless of the order /joint_states happens to use, so downstream indexing
 # is stable; a message naming anything else is rejected rather than reordered.
 KNOWN_JOINTS = (
-    'base_yaw', 'shoulder_pitch', 'elbow_pitch', 'head_pan', 'head_tilt',
+    'base_yaw',
+    'shoulder_pitch',
+    'elbow_pitch',
+    'head_pan',
+    'head_tilt',
 )
 JOINT_COUNT = len(KNOWN_JOINTS)
 
@@ -60,33 +67,35 @@ class InputSpec(NamedTuple):
     the same record.
     """
 
-    observation: type            # the project-owned message we publish
-    ros_type: type               # the message type the simulator publishes
-    topic: str                   # the topic we subscribe to
+    observation: type  # the project-owned message we publish
+    ros_type: type  # the message type the simulator publishes
+    topic: str  # the topic we subscribe to
     qos: QoSProfile | int
     freshness_sec: float | None  # None means latched for the episode
-    expected_rate_hz: float      # 0 means rate health is not meaningful
+    expected_rate_hz: float  # 0 means rate health is not meaningful
 
 
 # Freshness windows are set at roughly three missed messages, which is long
 # enough to ride out normal jitter and short enough that a stalled publisher
 # is reported before a consumer acts on dead data.
 INPUTS: dict[str, InputSpec] = {
-    'joints': InputSpec(
-        JointObservation, JointState, '/joint_states', 10, 0.15, 50.0),
-    'image': InputSpec(
-        ImageObservation, Image, '/camera/image_raw', SENSOR, 0.25, 15.0),
+    'joints': InputSpec(JointObservation, JointState, '/joint_states', 10, 0.15, 50.0),
+    'image': InputSpec(ImageObservation, Image, '/camera/image_raw', SENSOR, 0.25, 15.0),
     'calibration': InputSpec(
-        CalibrationObservation, CameraInfo, '/camera/camera_info', LATCHED_QOS,
-        LATCHED, NO_EXPECTED_RATE),
+        CalibrationObservation,
+        CameraInfo,
+        '/camera/camera_info',
+        LATCHED_QOS,
+        LATCHED,
+        NO_EXPECTED_RATE,
+    ),
     'launch_key': InputSpec(
-        LaunchKeyObservation, String, '/sim/launch_key', LATCHED_QOS,
-        LATCHED, NO_EXPECTED_RATE),
-    'tf': InputSpec(
-        TransformObservation, TFMessage, '/tf', TF_DYNAMIC, 0.15, 50.0),
+        LaunchKeyObservation, String, '/sim/launch_key', LATCHED_QOS, LATCHED, NO_EXPECTED_RATE
+    ),
+    'tf': InputSpec(TransformObservation, TFMessage, '/tf', TF_DYNAMIC, 0.15, 50.0),
     'tf_static': InputSpec(
-        TransformObservation, TFMessage, '/tf_static', TF_STATIC,
-        LATCHED, NO_EXPECTED_RATE),
+        TransformObservation, TFMessage, '/tf_static', TF_STATIC, LATCHED, NO_EXPECTED_RATE
+    ),
 }
 
 # --- Timing tolerances ----------------------------------------------------
