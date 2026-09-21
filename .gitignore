@@ -2,3 +2,6 @@ member_ws/build/
 member_ws/install/
 member_ws/log/
 __pycache__/
+.ruff_cache/
+member_ws/.ruff_cache/
+log/

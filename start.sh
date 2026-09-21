@@ -9,7 +9,10 @@ cd "$REPO/sim"
 
 # In an uninitialized submodule, sim/ has no .git; without this, the SLUG line
 # below walks up and returns THIS repo's origin, and the release download 404s.
-git -C "$REPO" submodule update --init sim
+# The pinned commit may not exist upstream (e.g. a PR bumped the gitlink
+# without pushing the submodule); tolerate that so a working checkout keeps
+# working -- the images and compose file are what `up` actually needs.
+git -C "$REPO" submodule update --init sim 2>/dev/null || true
 
 # Must precede the symlink: mkdir -p through a dangling symlink fails with EEXIST.
 mkdir -p "$REPO/member_ws/src"
