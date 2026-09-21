@@ -10,13 +10,26 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
   fixed commit.
 - `member_ws/` — our actual code: the ROS 2 workspace for the typist node
   (`member_ws/src/...`). `member_ws/src/` is tracked in this repo; build
-  output (`build/`, `install/`, `log/`) is gitignored. Three packages so far:
+  output (`build/`, `install/`, `log/`) is gitignored. Five packages:
   `robot_state`, which normalizes the simulator's topics into one timestamped
   view of the robot; `panel_detect`, which finds the panel's four ArUco
-  markers in those frames; and `interfaces`, which holds every message and
-  service this workspace defines. The first two have their own READMEs.
+  markers, estimates the panel pose, and projects world-frame key positions;
+  `arm_control`, which drives the arm to joint-space poses closed loop;
+  `typist`, which solves one pose per launch-key character and types it;
+  and `interfaces`, which holds every message, service, and action this
+  workspace defines. The first three have their own READMEs.
 - `start.sh` — launches the simulator (downloads/loads the docker images on
   first run, then `docker compose up -d`). Run it from this directory.
+- `Makefile` / `e2e.sh` — self-contained one-line runners, no new files
+  needed. Everything runs inside the `dev` container (which mounts this
+  workspace at `/ws` via the `sim/member_ws` symlink), so each target is a
+  single host command:
+  - `make up` — start sim + dev (idempotent; safe to re-run).
+  - `make e2e` — full end-to-end loop: build the workspace, launch the
+    typing stack, and type 3 seeds, checking `/sim/result` for an exact
+    match each episode. `make e2e SEEDS=20` for a longer loop.
+  - `make check` — repo tests (pytest, mirrors CI).
+  - `make logs` — tail the typing stack's output. `make down` — stop it.
 
 ## Workflow
 
@@ -42,8 +55,11 @@ Our Logs can be found [here](https://docs.google.com/document/d/1WLQU7h1sxwaj7nF
    cd sim && docker compose exec dev bash
    cd /ws && colcon build --symlink-install
    source /ws/install/setup.bash
-   ros2 run my_typist typist
+   ros2 launch typist typist.launch.py
    ```
+   Or in one line from the repo root: `make e2e` (builds, launches the
+   stack, and types 3 seeds, checking each `/sim/result` for an exact
+   match; `make e2e SEEDS=20` for a longer loop).
 5. Watch it act on the sim at http://localhost:8080.
 6. Commit and push from this repo as usual — `member_ws/src/` is regular
    tracked content here, `sim/` stays untouched at its pinned submodule
@@ -72,12 +88,12 @@ See `sim/docs/INFO.md` for the full simulator setup/reference and
 
 ## Checklist
 
-- [ ] Read the launch key from /sim/launch_key
+- [x] Read the launch key from /sim/launch_key
 - [x] Control the arm in closed loop from /joint_states, within its joint and velocity limits.
-- [ ] Determine the panel's position and orientation from the camera image.
-- [ ] Determine where the keys of the lanunch key are. Key positions are not provided 
-- [ ] Move the arm to a prose from which every character of the launch key can be pressed 
-- [ ] Aim at and press each character in order, then publish /sim/done 
-- [ ] type the launch key exactly, so /sim/result reports an exact match 
-- [ ] work on any episode seed without code changes. The panel's placement changes between episodes.
+- [x] Determine the panel's position and orientation from the camera image.
+- [x] Determine where the keys of the launch key are. Key positions are not provided
+- [x] Move the arm to a pose from which every character of the launch key can be pressed
+- [x] Aim at and press each character in order, then publish /sim/done
+- [x] type the launch key exactly, so /sim/result reports an exact match
+- [x] work on any episode seed without code changes. The panel's placement changes between episodes.
 - [ ] record detections, pose estimates, commands, and press decisions in an exportable log 
