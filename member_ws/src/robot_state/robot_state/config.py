@@ -77,7 +77,10 @@ class InputSpec(NamedTuple):
 
 # Freshness windows are set at roughly three missed messages, which is long
 # enough to ride out normal jitter and short enough that a stalled publisher
-# is reported before a consumer acts on dead data.
+# is reported before a consumer acts on dead data. TF batches carry the
+# oldest-accepted transform's stamp (observation.py), and the sim's TF clock
+# can lag the local clock by ~0.1 s under load -- so TF's window must cover
+# that skew plus missed messages, or every goal faults mid-execution.
 INPUTS: dict[str, InputSpec] = {
     'joints': InputSpec(JointObservation, JointState, '/joint_states', 10, 0.15, 50.0),
     'image': InputSpec(ImageObservation, Image, '/camera/image_raw', SENSOR, 0.25, 15.0),
@@ -92,7 +95,7 @@ INPUTS: dict[str, InputSpec] = {
     'launch_key': InputSpec(
         LaunchKeyObservation, String, '/sim/launch_key', LATCHED_QOS, LATCHED, NO_EXPECTED_RATE
     ),
-    'tf': InputSpec(TransformObservation, TFMessage, '/tf', TF_DYNAMIC, 0.15, 50.0),
+    'tf': InputSpec(TransformObservation, TFMessage, '/tf', TF_DYNAMIC, 0.5, 50.0),
     'tf_static': InputSpec(
         TransformObservation, TFMessage, '/tf_static', TF_STATIC, LATCHED, NO_EXPECTED_RATE
     ),

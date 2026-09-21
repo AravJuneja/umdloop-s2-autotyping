@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+from typing import Any
 
 from conftest import DOMAIN_ID, message
 from interfaces.srv import GetRobotState
@@ -23,6 +24,7 @@ from rclpy.node import Node
 from rclpy.time import Time
 from robot_state.config import INPUTS, KNOWN_JOINTS, LATCHED_QOS
 from robot_state.state_node import StateNode
+from std_msgs.msg import Empty, String
 
 
 def spin_until(executor, predicate, timeout=10):
@@ -237,5 +239,49 @@ def test_missing_inputs_are_announced_before_any_message_arrives():
         assert not any(value.status.rate_known for value in seen.values())
     finally:
         node.destroy_node()
+        executor.shutdown()
+        context.try_shutdown()
+
+
+def test_done_republishes_launch_key_for_same_key_next_episode():
+    """A same-key sim reset still notifies the typist of the new episode.
+
+    The sim republishes /sim/launch_key on reset, but the normalized update
+    only emits on health *change* -- and a same-key episode changes nothing.
+    The typist keys episodes off that update, so without a forced republish
+    on /sim/done it would type exactly one episode and idle forever.
+    """
+    context = Context()
+    rclpy.init(context=context, domain_id=DOMAIN_ID)
+    probe = Node('state_done_probe', context=context)
+    executor = SingleThreadedExecutor(context=context)
+    executor.add_node(probe)
+    node = StateNode(context=context)
+    executor.add_node(node)
+    seen: list = []
+    try:
+        probe.create_publisher(String, '/sim/launch_key', LATCHED_QOS)
+        done_pub = probe.create_publisher(Empty, '/sim/done', 10)
+
+        def record_key(msg: Any) -> None:
+            seen.append(msg.key)
+
+        probe.create_subscription(
+            INPUTS['launch_key'].observation,
+            '/robot_state/updates/launch_key',
+            record_key,
+            LATCHED_QOS,
+        )
+        spin_until(executor, lambda: len(seen) >= 1)
+        assert seen[-1] == ''
+        done_pub.publish(Empty())
+        spin_until(executor, lambda: len(seen) >= 2)
+        assert seen[-2:] == ['', '']
+        launch = probe.create_publisher(String, '/sim/launch_key', LATCHED_QOS)
+        launch.publish(message('launch_key'))
+        spin_until(executor, lambda: seen[-1] == 'ROVER')
+    finally:
+        node.destroy_node()
+        probe.destroy_node()
         executor.shutdown()
         context.try_shutdown()
