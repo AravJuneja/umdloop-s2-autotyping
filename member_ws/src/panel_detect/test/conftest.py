@@ -43,13 +43,14 @@ def observation(image, valid=True, fresh=True, row_step=None):
         message.pixels = image.tobytes()
     else:
         padded = np.zeros((message.height, row_step), np.uint8)
-        padded[:, :message.width * 3] = image.reshape(message.height, -1)
+        padded[:, : message.width * 3] = image.reshape(message.height, -1)
         message.pixels = padded.tobytes()
     return message
 
 
-def render_marker(marker_id, side_px, centre, angle, size=160, jitter=0.0,
-                  rng=None, supersample=8):
+def render_marker(
+    marker_id, side_px, centre, angle, size=160, jitter=0.0, rng=None, supersample=8
+):
     """Draw one marker at a known sub-pixel place; return the image and corners.
 
     Rendered large and averaged down rather than warped straight to size, so
@@ -62,24 +63,38 @@ def render_marker(marker_id, side_px, centre, angle, size=160, jitter=0.0,
     marker = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_MODULES * module)
     span = MARKER_MODULES * module
     source = np.full((span + 2 * module,) * 2, 255, np.uint8)
-    source[module:module + span, module:module + span] = marker
+    # Bound hoisted into a local: ruff format spaces the colons of a slice
+    # whose bounds are expressions, and ament_flake8 rejects that as E203.
+    end = module + span
+    source[module:end, module:end] = marker
     # Pixel i covers [i - 0.5, i + 0.5], so the black border's outer edge sits
     # half a pixel before its first pixel.
-    edge = np.array([[module - .5, module - .5], [module + span - .5, module - .5],
-                     [module + span - .5, module + span - .5],
-                     [module - .5, module + span - .5]], dtype=np.float32)
+    edge = np.array(
+        [
+            [module - 0.5, module - 0.5],
+            [module + span - 0.5, module - 0.5],
+            [module + span - 0.5, module + span - 0.5],
+            [module - 0.5, module + span - 0.5],
+        ],
+        dtype=np.float32,
+    )
     half = side_px / 2
-    unit = np.array([[-half, -half], [half, -half], [half, half], [-half, half]],
-                    dtype=np.float32)
-    rotation = np.array([[np.cos(angle), -np.sin(angle)],
-                         [np.sin(angle), np.cos(angle)]], dtype=np.float32)
+    unit = np.array([[-half, -half], [half, -half], [half, half], [-half, half]], dtype=np.float32)
+    rotation = np.array(
+        [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]], dtype=np.float32
+    )
     corners = unit @ rotation.T + np.array(centre, dtype=np.float32)
     if jitter and rng is not None:
         corners = corners + rng.uniform(-jitter, jitter, corners.shape).astype(np.float32)
     big = (corners + 0.5) * supersample - 0.5
     matrix = cv2.getPerspectiveTransform(edge, big.astype(np.float32))
     canvas = cv2.warpPerspective(
-        source, matrix, (size * supersample,) * 2, flags=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT, borderValue=(0.0, 0.0, 0.0))
+        source,
+        matrix,
+        (size * supersample,) * 2,
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(0.0, 0.0, 0.0),
+    )
     image = cv2.resize(canvas, (size, size), interpolation=cv2.INTER_AREA)
     return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), corners.astype(np.float64)

@@ -31,8 +31,8 @@ class Detection:
 class Result:
     """What one frame had to say about the panel."""
 
-    detections: tuple           # Detection, ascending by id
-    missing_ids: tuple          # ids from PANEL_MARKER_IDS this frame lacked
+    detections: tuple  # Detection, ascending by id
+    missing_ids: tuple  # ids from PANEL_MARKER_IDS this frame lacked
 
     @property
     def complete(self):
@@ -57,20 +57,22 @@ def decode(observation):
     silently shear the image if one ever did.
     """
     if observation.encoding != config.IMAGE_ENCODING:
-        raise ValueError(
-            f'encoding {observation.encoding!r}, expected {config.IMAGE_ENCODING!r}')
+        raise ValueError(f'encoding {observation.encoding!r}, expected {config.IMAGE_ENCODING!r}')
     expected = observation.row_step * observation.height
     if len(observation.pixels) != expected:
         raise ValueError(
             f'{len(observation.pixels)} bytes, expected {expected} '
-            f'({observation.height} rows of {observation.row_step})')
+            f'({observation.height} rows of {observation.row_step})'
+        )
     if observation.row_step < observation.width * config.IMAGE_CHANNELS:
         raise ValueError(
             f'row_step {observation.row_step} is short for {observation.width} '
-            f'{config.IMAGE_ENCODING} pixels')
+            f'{config.IMAGE_ENCODING} pixels'
+        )
     rows = np.frombuffer(observation.pixels, dtype=np.uint8).reshape(
-        observation.height, observation.row_step)
-    packed = rows[:, :observation.width * config.IMAGE_CHANNELS]
+        observation.height, observation.row_step
+    )
+    packed = rows[:, : observation.width * config.IMAGE_CHANNELS]
     return packed.reshape(observation.height, observation.width, config.IMAGE_CHANNELS)
 
 
@@ -88,14 +90,14 @@ def detect(image, detector):
         for marker_id, quad in zip(ids.ravel().tolist(), corners):
             marker_id = int(marker_id)
             if marker_id in config.PANEL_MARKER_IDS:
-                quads.setdefault(marker_id, []).append(
-                    quad.reshape(4, 2).astype(np.float64))
+                quads.setdefault(marker_id, []).append(quad.reshape(4, 2).astype(np.float64))
     detections = tuple(
         Detection(marker_id=marker_id, corners=found[0])
-        for marker_id, found in sorted(quads.items()) if len(found) == 1)
+        for marker_id, found in sorted(quads.items())
+        if len(found) == 1
+    )
     seen = {detection.marker_id for detection in detections}
-    missing = tuple(
-        marker_id for marker_id in config.PANEL_MARKER_IDS if marker_id not in seen)
+    missing = tuple(marker_id for marker_id in config.PANEL_MARKER_IDS if marker_id not in seen)
     return Result(detections=detections, missing_ids=missing)
 
 
@@ -118,24 +120,35 @@ def draw_overlay(image, result):
             _label(overlay, str(index), corner + direction, config.CORNER_COLOR)
         # Clear of the corner labels, which sit about a marker half-diagonal
         # out; at 21 px a marker that is roughly 15 px, and 0 and 1 are up here.
-        _label(overlay, f'id {detection.marker_id}',
-               centre + np.array([0.0, -config.ID_LABEL_OFFSET_PX]),
-               config.ID_COLOR)
+        _label(
+            overlay,
+            f'id {detection.marker_id}',
+            centre + np.array([0.0, -config.ID_LABEL_OFFSET_PX]),
+            config.ID_COLOR,
+        )
     if result.missing_ids:
         missing = ', '.join(str(marker_id) for marker_id in result.missing_ids)
-        _label(overlay, f'missing: {missing}', np.array([10.0, 20.0]),
-               config.MISSING_COLOR)
+        _label(overlay, f'missing: {missing}', np.array([10.0, 20.0]), config.MISSING_COLOR)
     return overlay
 
 
 def _label(image, text, position, color):
     """Centre a short label on a point, clipped to stay inside the frame."""
     (width, height), _ = cv2.getTextSize(
-        text, cv2.FONT_HERSHEY_SIMPLEX, config.FONT_SCALE, config.FONT_THICKNESS)
+        text, cv2.FONT_HERSHEY_SIMPLEX, config.FONT_SCALE, config.FONT_THICKNESS
+    )
     rows, columns = image.shape[:2]
     origin = (
         int(min(max(position[0] - width / 2, 0), columns - width)),
         int(min(max(position[1] + height / 2, height), rows - 1)),
     )
-    cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, config.FONT_SCALE,
-                color, config.FONT_THICKNESS, cv2.LINE_AA)
+    cv2.putText(
+        image,
+        text,
+        origin,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        config.FONT_SCALE,
+        color,
+        config.FONT_THICKNESS,
+        cv2.LINE_AA,
+    )

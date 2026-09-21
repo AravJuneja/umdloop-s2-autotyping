@@ -46,9 +46,9 @@ def test_a_frame_in_becomes_detections_and_an_overlay_out(tmp_path):
         probe = rclpy.create_node('probe', context=context)
         received: list = []
         probe.create_subscription(
-            MarkerDetections, '/panel_detect/detections', received.append, 10)
-        frames = probe.create_publisher(
-            ImageObservation, config.IMAGE_TOPIC, config.FRAMES)
+            MarkerDetections, '/panel_detect/detections', received.append, 10
+        )
+        frames = probe.create_publisher(ImageObservation, config.IMAGE_TOPIC, config.FRAMES)
         saves = probe.create_client(Trigger, '/panel_detect/save_overlay')
         executor = SingleThreadedExecutor(context=context)
         executor.add_node(node)
@@ -88,9 +88,9 @@ def test_the_node_ignores_frames_robot_state_rejected(tmp_path):
         probe = rclpy.create_node('probe', context=context)
         received: list = []
         probe.create_subscription(
-            MarkerDetections, '/panel_detect/detections', received.append, 10)
-        frames = probe.create_publisher(
-            ImageObservation, config.IMAGE_TOPIC, config.FRAMES)
+            MarkerDetections, '/panel_detect/detections', received.append, 10
+        )
+        frames = probe.create_publisher(ImageObservation, config.IMAGE_TOPIC, config.FRAMES)
         executor = SingleThreadedExecutor(context=context)
         executor.add_node(node)
         executor.add_node(probe)

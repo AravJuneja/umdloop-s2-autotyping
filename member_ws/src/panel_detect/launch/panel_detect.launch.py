@@ -14,10 +14,17 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     """Build the launch description for the detector and its frame source."""
-    robot_state = PythonLaunchDescriptionSource([
-        FindPackageShare('robot_state'), '/launch/robot_state.launch.py'])
-    return LaunchDescription([
-        IncludeLaunchDescription(robot_state),
-        Node(package='panel_detect', executable='panel_detect',
-             name='panel_detect', output='screen'),
-    ])
+    robot_state = PythonLaunchDescriptionSource(
+        [FindPackageShare('robot_state'), '/launch/robot_state.launch.py']
+    )
+    return LaunchDescription(
+        [
+            IncludeLaunchDescription(robot_state),
+            Node(
+                package='panel_detect',
+                executable='panel_detect',
+                name='panel_detect',
+                output='screen',
+            ),
+        ]
+    )

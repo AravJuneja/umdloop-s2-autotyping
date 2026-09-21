@@ -70,9 +70,11 @@ def test_marker_centres_land_within_a_quarter_pixel(find):
         image, truth = render_marker(
             marker_id=marker_id,
             side_px=float(rng.uniform(19, 24)),
-            centre=(80 + float(rng.uniform(-.5, .5)), 80 + float(rng.uniform(-.5, .5))),
+            centre=(80 + float(rng.uniform(-0.5, 0.5)), 80 + float(rng.uniform(-0.5, 0.5))),
             angle=float(rng.uniform(-0.25, 0.25)),
-            jitter=0.6, rng=rng)
+            jitter=0.6,
+            rng=rng,
+        )
         result = detector.detect(image, find)
         assert [found.marker_id for found in result.detections] == [marker_id]
         found = result.detections[0]
@@ -89,11 +91,14 @@ def test_decode_honours_row_padding(frame):
     assert np.array_equal(detector.decode(padded), frame)
 
 
-@pytest.mark.parametrize('broken, problem', [
-    (lambda message: setattr(message, 'encoding', 'rgb8'), 'encoding'),
-    (lambda message: setattr(message, 'pixels', b'\x00' * 12), 'bytes'),
-    (lambda message: setattr(message, 'row_step', 1), 'bytes'),
-])
+@pytest.mark.parametrize(
+    'broken, problem',
+    [
+        (lambda message: setattr(message, 'encoding', 'rgb8'), 'encoding'),
+        (lambda message: setattr(message, 'pixels', b'\x00' * 12), 'bytes'),
+        (lambda message: setattr(message, 'row_step', 1), 'bytes'),
+    ],
+)
 def test_decode_refuses_frames_it_cannot_trust(frame, broken, problem):
     message = observation(frame)
     broken(message)
@@ -113,7 +118,7 @@ def test_overlay_draws_and_exports(frame, find, tmp_path):
 
 def test_overlay_announces_a_partial_view(frame, find):
     """A frame missing markers says so on the image, not only in the message."""
-    half = np.ascontiguousarray(frame[:, :frame.shape[1] // 2])
+    half = np.ascontiguousarray(frame[:, : frame.shape[1] // 2])
     partial = detector.detect(half, find)
     assert partial.missing_ids
     banner = detector.draw_overlay(half, partial)[:30, :200]
