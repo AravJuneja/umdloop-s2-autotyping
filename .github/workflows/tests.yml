@@ -10,9 +10,19 @@ on:
     branches: [main]
   pull_request:
 
+# A branch that is pushed every few minutes otherwise stacks a run per push,
+# and they compete for runners instead of superseding each other.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Without this the job's default is six hours, and a hung test step is
+    # indistinguishable from a slow one -- a hung job also uploads no logs,
+    # so the failure cannot be read at all.
+    timeout-minutes: 15
     # The same base the dev container uses, so a green run here means the
     # same thing as a green run in docker. Dependencies below mirror
     # sim/docker/Dockerfile; when that file changes, this one follows.
@@ -61,8 +71,10 @@ jobs:
         run: |
           . /opt/ros/jazzy/setup.sh
           . install/setup.sh
-          python3 -m pytest src/robot_state/test -q
-          python3 -m pytest src/panel_detect/test -q
+          # `timeout` so a wedged invocation fails with its output captured
+          # rather than hanging the job to its limit and discarding the log.
+          timeout 300 python3 -m pytest src/robot_state/test -q
+          timeout 300 python3 -m pytest src/panel_detect/test -q
 
       - name: Types
         working-directory: member_ws
