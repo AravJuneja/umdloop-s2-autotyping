@@ -47,8 +47,7 @@ def test_slow_enough_boundary():
 
 
 def test_validate_goal_accepts_home_pose():
-    assert control.validate_goal(
-        list(config.KNOWN_JOINTS), [0.0, 1.4835, -1.9722, 0.0, 0.0]) == []
+    assert control.validate_goal(list(config.KNOWN_JOINTS), [0.0, 1.4835, -1.9722, 0.0, 0.0]) == []
 
 
 def test_validate_goal_rejects_missing_joint():

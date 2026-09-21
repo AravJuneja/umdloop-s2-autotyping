@@ -29,7 +29,6 @@ STATUS_QOS = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 
 class ArmControlNode(Node):
-
     def __init__(self, **kwargs):
         super().__init__('arm_control', **kwargs)
         # _state_lock guards everything the subscription callback and an
@@ -48,14 +47,19 @@ class ArmControlNode(Node):
         self._goal_handle = None
 
         callback_group = ReentrantCallbackGroup()
-        self._pub_cmd = self.create_publisher(
-            JointVelocityCommand, '/arm/cmd_joint_velocity', 1)
+        self._pub_cmd = self.create_publisher(JointVelocityCommand, '/arm/cmd_joint_velocity', 1)
         self._pub_status = self.create_publisher(ArmStatus, '~/status', STATUS_QOS)
         self.create_subscription(
-            JointObservation, '/robot_state/updates/joints', self._on_joints,
-            STATUS_QOS, callback_group=callback_group)
+            JointObservation,
+            '/robot_state/updates/joints',
+            self._on_joints,
+            STATUS_QOS,
+            callback_group=callback_group,
+        )
         self._action_server = ActionServer(
-            self, MoveJoints, '~/move_joints',
+            self,
+            MoveJoints,
+            '~/move_joints',
             execute_callback=self._execute,
             goal_callback=self._on_goal,
             cancel_callback=self._on_cancel,
@@ -69,7 +73,8 @@ class ArmControlNode(Node):
         )
         self.get_logger().info(
             'joints=/robot_state/updates/joints; cmd=/arm/cmd_joint_velocity; '
-            'action=~/move_joints; status=~/status')
+            'action=~/move_joints; status=~/status'
+        )
 
     # ------------------------------------------------------------- joints
 
@@ -96,22 +101,20 @@ class ArmControlNode(Node):
             self._reported_idle = True
             self._publish_status(
                 ArmStatus.STOPPED if healthy else ArmStatus.FAULTED,
-                problems=problems if not healthy else None)
+                problems=problems if not healthy else None,
+            )
 
     # ------------------------------------------------------------- action
 
     def _on_goal(self, goal_request):
-        problems = control.validate_goal(
-            list(goal_request.name), list(goal_request.position))
+        problems = control.validate_goal(list(goal_request.name), list(goal_request.position))
         with self._state_lock:
             healthy = self._have_joints and self._joints_healthy
         if problems:
-            self.get_logger().warn(
-                f'MoveJoints goal rejected: {"; ".join(problems)}')
+            self.get_logger().warn(f'MoveJoints goal rejected: {"; ".join(problems)}')
             return GoalResponse.REJECT
         if not healthy:
-            self.get_logger().warn(
-                'MoveJoints goal rejected: joint input is not healthy')
+            self.get_logger().warn('MoveJoints goal rejected: joint input is not healthy')
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
@@ -180,8 +183,12 @@ class ArmControlNode(Node):
                 settled_since = None
 
             feedback = MoveJoints.Feedback(
-                state=ArmStatus.MOVING, name=names,
-                position=[position[n] for n in names], velocity=velocities, error=errors)
+                state=ArmStatus.MOVING,
+                name=names,
+                position=[position[n] for n in names],
+                velocity=velocities,
+                error=errors,
+            )
             goal_handle.publish_feedback(feedback)
             self._publish_status(ArmStatus.MOVING, target=target)
             time.sleep(config.CONTROL_PERIOD_SEC)
@@ -233,7 +240,9 @@ class ArmControlNode(Node):
         names = list(config.KNOWN_JOINTS)
         target = target or position
         msg = ArmStatus(
-            stamp=self.get_clock().now().to_msg(), state=state, name=names,
+            stamp=self.get_clock().now().to_msg(),
+            state=state,
+            name=names,
             position=[position.get(n, 0.0) for n in names],
             velocity=[velocity.get(n, 0.0) for n in names],
             target=[target.get(n, position.get(n, 0.0)) for n in names],
