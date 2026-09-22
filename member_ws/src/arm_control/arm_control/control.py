@@ -56,5 +56,6 @@ def validate_goal(name, position):
             limits = config.LIMITS[joint_name]
             problems.append(
                 f'{joint_name}: target {joint_position:.4f} rad outside '
-                f'[{limits.q_min:.4f}, {limits.q_max:.4f}]')
+                f'[{limits.q_min:.4f}, {limits.q_max:.4f}]'
+            )
     return problems

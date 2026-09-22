@@ -17,7 +17,6 @@ from . import config, detector
 
 
 class DetectNode(Node):
-
     def __init__(self, **kwargs):
         super().__init__('panel_detect', **kwargs)
         self._detector = detector.make_detector()
@@ -28,17 +27,22 @@ class DetectNode(Node):
         self._last: tuple | None = None
         self._counts = _Counters()
         self._detections = self.create_publisher(
-            config.DETECTIONS_TYPE, config.DETECTIONS_TOPIC, config.DETECTIONS)
+            config.DETECTIONS_TYPE, config.DETECTIONS_TOPIC, config.DETECTIONS
+        )
         self._overlay = self.create_publisher(
-            config.OVERLAY_TYPE, config.OVERLAY_TOPIC, config.OVERLAY)
+            config.OVERLAY_TYPE, config.OVERLAY_TOPIC, config.OVERLAY
+        )
         self._subscription = self.create_subscription(
-            config.IMAGE_TYPE, config.IMAGE_TOPIC, self._on_image, config.FRAMES)
+            config.IMAGE_TYPE, config.IMAGE_TOPIC, self._on_image, config.FRAMES
+        )
         self._service = self.create_service(
-            config.SAVE_OVERLAY_TYPE, config.SAVE_OVERLAY_SERVICE, self._save_overlay)
+            config.SAVE_OVERLAY_TYPE, config.SAVE_OVERLAY_SERVICE, self._save_overlay
+        )
         self.create_timer(config.LOG_TICK_SEC, self._log_status)
         self.get_logger().info(
             f'frames={config.IMAGE_TOPIC}; detections=~/detections; '
-            f'overlay=~/overlay; save=~/save_overlay')
+            f'overlay=~/overlay; save=~/save_overlay'
+        )
 
     def _on_image(self, observation):
         """Detect in one frame and publish what it showed."""
@@ -68,7 +72,8 @@ class DetectNode(Node):
         # so it is only drawn when something is actually listening.
         if self._overlay.get_subscription_count():
             self._overlay.publish(
-                _image_message(detector.draw_overlay(image, result), observation))
+                _image_message(detector.draw_overlay(image, result), observation)
+            )
 
     def _save_overlay(self, request, response):
         """Write the latest overlay to disk and report where it went."""
@@ -101,7 +106,8 @@ class DetectNode(Node):
         self.get_logger().info(
             f'frames={counts.frames} ({rate:.1f} Hz) skipped={counts.skipped} '
             f'complete={counts.complete} markers={counts.detected} '
-            f'mean={mean_ms:.1f} ms')
+            f'mean={mean_ms:.1f} ms'
+        )
 
 
 class _Counters:
@@ -129,7 +135,8 @@ def _marker_message(detection):
     """One marker, with its corners in the order detector.py documents."""
     return MarkerDetection(
         id=detection.marker_id,
-        corners=[Pixel(u=float(u), v=float(v)) for u, v in detection.corners])
+        corners=[Pixel(u=float(u), v=float(v)) for u, v in detection.corners],
+    )
 
 
 def _image_message(image, observation):

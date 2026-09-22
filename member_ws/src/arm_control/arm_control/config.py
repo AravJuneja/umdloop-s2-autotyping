@@ -11,7 +11,11 @@ from typing import NamedTuple
 # dependency for this constant, so a simulator joint rename needs both
 # updated together.
 KNOWN_JOINTS = (
-    'base_yaw', 'shoulder_pitch', 'elbow_pitch', 'head_pan', 'head_tilt',
+    'base_yaw',
+    'shoulder_pitch',
+    'elbow_pitch',
+    'head_pan',
+    'head_tilt',
 )
 JOINT_COUNT = len(KNOWN_JOINTS)
 
@@ -24,11 +28,11 @@ class JointLimits(NamedTuple):
 
 # sim/docs/INTERFACES.md section 3.1, converted from degrees to radians.
 LIMITS: dict[str, JointLimits] = {
-    'base_yaw':       JointLimits(-2.0944, 2.0944, 0.6),
+    'base_yaw': JointLimits(-2.0944, 2.0944, 0.6),
     'shoulder_pitch': JointLimits(-0.5236, 1.7453, 0.6),
-    'elbow_pitch':    JointLimits(-2.4435, 0.0,    0.8),
-    'head_pan':       JointLimits(-0.7854, 0.7854, 1.0),
-    'head_tilt':      JointLimits(-0.6109, 0.6109, 1.0),
+    'elbow_pitch': JointLimits(-2.4435, 0.0, 0.8),
+    'head_pan': JointLimits(-0.7854, 0.7854, 1.0),
+    'head_tilt': JointLimits(-0.6109, 0.6109, 1.0),
 }
 
 # Proportional position-to-velocity gain, per joint. Chosen so every joint

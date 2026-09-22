@@ -1,9 +1,4 @@
-"""Start panel_detect and the robot_state node it reads its frames from.
-
-The detector subscribes to robot_state's ~/updates/image, so the two are
-only useful together; starting them from one file is what keeps that pairing
-from being something everybody has to remember.
-"""
+"""Start the full typing stack: state, detection, projection, control, typist."""
 
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
@@ -13,7 +8,6 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    """Build the launch description for the detector and its frame source."""
     robot_state = PythonLaunchDescriptionSource(
         [FindPackageShare('robot_state'), '/launch/robot_state.launch.py']
     )
@@ -26,5 +20,18 @@ def generate_launch_description():
                 name='panel_detect',
                 output='screen',
             ),
+            Node(
+                package='panel_detect',
+                executable='key_projector',
+                name='key_projector',
+                output='screen',
+            ),
+            Node(
+                package='arm_control',
+                executable='arm_control',
+                name='arm_control',
+                output='screen',
+            ),
+            Node(package='typist', executable='typist', name='typist', output='screen'),
         ]
     )

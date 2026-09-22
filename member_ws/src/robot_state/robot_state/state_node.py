@@ -14,6 +14,7 @@ from interfaces.msg import RobotState
 from interfaces.srv import GetRobotState
 from rclpy.node import Node
 from rclpy.time import Time
+from std_msgs.msg import Empty
 from tf2_ros import Buffer, TransformListener
 
 from . import config
@@ -56,11 +57,14 @@ class StateNode(Node):
             for name, spec in config.INPUTS.items()
         ]
         self._service = self.create_service(GetRobotState, '~/get_state', self._query)
+        self._reset_subscription = self.create_subscription(
+            Empty, '/sim/done', self._on_episode_end, 10
+        )
         self.create_timer(config.HEALTH_TICK_SEC, self._refresh)
         self.create_timer(config.LOG_TICK_SEC, self._log_status)
         self.get_logger().info(
             f'joints={",".join(config.KNOWN_JOINTS)}; '
-            'updates=~/updates/{input}; query=~/get_state'
+            'updates=~/updates/{input}; query=~/get_state; episode-end=/sim/done'
         )
 
     def get_state(self):
@@ -88,6 +92,27 @@ class StateNode(Node):
     def _query(self, request, response):
         response.state = self.get_state()
         return response
+
+    def _on_episode_end(self, msg):
+        """Republish the latched launch key for the next same-key episode.
+
+        /sim/launch_key is republished by the sim on reset, but our
+        ~/updates/launch_key publisher only emits on health *change* (see
+        _refresh/_emit), and a same-key episode changes nothing -- so the
+        typist's episode trigger would never fire. /sim/done precedes the
+        reset, making it a reliable cue to force one republish. Bumped
+        received_stamp marks the copy as newer than any previous one, so
+        the typist can tell episodes apart even when the key is identical.
+        The sequence-number guard in _emit keeps this ordered after any
+        in-flight snapshot.
+        """
+        del msg
+        with self._lock:
+            now = self.get_clock().now().to_msg()
+            observation = self._observations['launch_key']
+            observation.value.status.received_stamp = copy.deepcopy(now)
+            pending = self._snapshot('launch_key', now)
+        self._emit(*pending)
 
     @staticmethod
     def _health(s):

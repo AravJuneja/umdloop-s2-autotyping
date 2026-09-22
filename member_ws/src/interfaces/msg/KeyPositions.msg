@@ -10,3 +10,5 @@ string[] name
 float64[] x
 float64[] y
 float64[] z
+# Panel normal toward the arm in frame_id, from the solvePnP board fit.
+float64[] normal

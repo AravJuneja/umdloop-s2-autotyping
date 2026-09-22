@@ -28,20 +28,24 @@ are averaged across frames -- the true value does not move -- which is
 mainly what turns a single noisy contour into something worth trusting.
 """
 
+import math
 import os
+from typing import Any
 
+from autotype_sim.core.keymap import generate_tkl, KeyMap
 import cv2
-import numpy as np
-import rclpy
-from autotype_sim.core.keymap import KeyMap, generate_tkl
+from geometry_msgs.msg import PoseStamped
 from interfaces.msg import (
     CalibrationObservation,
     ImageObservation,
     KeyPositions,
     MarkerDetections,
 )
+import numpy as np
+import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Empty
 from tf2_ros import Buffer, TransformListener
 
 from . import detector
@@ -57,7 +61,10 @@ MARKER_CORNERS_BOARD = {
     3: [(0.006, 0.149, 0.0), (0.026, 0.149, 0.0), (0.026, 0.169, 0.0), (0.006, 0.169, 0.0)],
 }
 MARKER_CENTERS_BOARD = {
-    0: (0.016, 0.016), 1: (0.384, 0.016), 2: (0.384, 0.159), 3: (0.016, 0.159),
+    0: (0.016, 0.016),
+    1: (0.384, 0.016),
+    2: (0.384, 0.159),
+    3: (0.016, 0.159),
 }
 
 # robot_state normalizes every sim input (README: "so the rest of our code
@@ -67,6 +74,7 @@ CALIBRATION_TOPIC = '/robot_state/updates/calibration'
 IMAGE_TOPIC = '/robot_state/updates/image'
 DETECTIONS_TOPIC = '/panel_detect/detections'
 KEY_POSITIONS_TOPIC = '~/key_positions'
+PANEL_POSE_TOPIC = '~/panel_pose'
 
 # robot_state publishes every ~/updates/<input> on this exact profile
 # (robot_state/config.py: LATCHED_QOS), image included -- a late subscriber
@@ -99,20 +107,33 @@ BEZEL_LIKE_BGR = (38, 38, 38)
 # many agreeing measurements is trusted before anything is published.
 MIN_MEASUREMENTS_TO_TRUST = 5
 LOG_EVERY_N_MEASUREMENTS = 25
+# Consumers gate on the estimate having gone quiet (typist._tick), so a
+# stream that never repeats itself never lets them start. The world key
+# points cannot serve as that signal: measured on a parked arm they move a
+# median 0.30 mm and up to 1.9 mm per frame, because the pose is re-fit from
+# scratch on every frame and carries ~1 px of reprojection noise. What does
+# converge is key_area_origin itself -- site configuration, fixed for the
+# deployment -- whose Welford mean steps by about spread/n and so goes quiet
+# within a few dozen frames. Republish only when that moves, at a twentieth
+# of the 0.2 mm cross-episode spread the saved fixtures measure.
+ORIGIN_EPSILON_M = 1e-5
 
 KEY_POINT_COLOR = (0, 255, 0)
 BANNER_COLOR = (0, 255, 255)
 
 
 def _panel_pose_homography(K, rvec, tvec):
-    """Board-frame ``(x, y, 1)`` (metres, z=0) -> image homogeneous coordinates."""
+    """Board-frame ``(x, y, 1)`` (metres, z=0) to image coordinates."""
     R, _ = cv2.Rodrigues(rvec)
     return K @ np.hstack([R[:, :2], tvec.reshape(3, 1)])
 
 
 def _rectify_to_board_frame(image, homography, px_per_m):
-    """Fronto-parallel board-frame view: canvas pixel (x, y) is board metre
-    (x / px_per_m, y / px_per_m); canvas size is the panel's public extent."""
+    """Rectify the image to a fronto-parallel board-frame view.
+
+    Canvas pixel (x, y) is board metre (x / px_per_m, y / px_per_m);
+    canvas size is the panel's public extent.
+    """
     canvas_to_board = np.diag([1.0 / px_per_m, 1.0 / px_per_m, 1.0])
     canvas_to_image = homography @ canvas_to_board
     size = (int(round(PANEL_W_M * px_per_m)), int(round(PANEL_H_M * px_per_m)))
@@ -120,24 +141,31 @@ def _rectify_to_board_frame(image, homography, px_per_m):
 
 
 def _mask_markers(canvas, px_per_m):
-    """Blank the marker footprints so their own texture cannot be mistaken
-    for the key grid's."""
+    """Blank the marker footprints.
+
+    Their own texture cannot be mistaken for the key grid's.
+    """
     masked = canvas.copy()
     half_px = MARKER_MASK_HALF_M * px_per_m
     for cx, cy in MARKER_CENTERS_BOARD.values():
         x0, x1 = int(round(cx * px_per_m - half_px)), int(round(cx * px_per_m + half_px))
         y0, y1 = int(round(cy * px_per_m - half_px)), int(round(cy * px_per_m + half_px))
-        masked[max(y0, 0):y1, max(x0, 0):x1] = BEZEL_LIKE_BGR
+        # Clamped into locals, not inline: ruff format spaces the colons of a
+        # slice whose bounds are calls, and ament_flake8 rejects that as E203.
+        x0, y0 = max(x0, 0), max(y0, 0)
+        masked[y0:y1, x0:x1] = BEZEL_LIKE_BGR
     return masked
 
 
 def _find_key_grid_rectangle(canvas, px_per_m):
-    """Board-frame ``(x0, y0, width, height)`` metres of the busiest
-    rectangular region in ``canvas``, or ``None``."""
+    """Board-frame ``(x0, y0, width, height)`` of the busiest region.
+
+    Returns metres, or ``None`` when no contour exists.
+    """
     gray = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY).astype(np.float32)
     mean = cv2.boxFilter(gray, -1, (9, 9))
-    sq_mean = cv2.boxFilter(gray ** 2, -1, (9, 9))
-    activity = np.sqrt(np.clip(sq_mean - mean ** 2, 0, None)).astype(np.uint8)
+    sq_mean = cv2.boxFilter(gray**2, -1, (9, 9))
+    activity = np.sqrt(np.clip(sq_mean - mean**2, 0, None)).astype(np.uint8)
     _, mask = cv2.threshold(activity, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -148,19 +176,25 @@ def _find_key_grid_rectangle(canvas, px_per_m):
 
 
 def _extent_is_plausible(width, height, tolerance=0.4):
-    return (abs(width - GRID_WIDTH_M) <= tolerance * GRID_WIDTH_M
-            and abs(height - GRID_HEIGHT_M) <= tolerance * GRID_HEIGHT_M)
+    return (
+        abs(width - GRID_WIDTH_M) <= tolerance * GRID_WIDTH_M
+        and abs(height - GRID_HEIGHT_M) <= tolerance * GRID_HEIGHT_M
+    )
 
 
 def _origin_is_in_bounds(ox, oy):
-    return (0.0 <= ox and ox + GRID_WIDTH_M <= PANEL_W_M
-            and 0.0 <= oy and oy + GRID_HEIGHT_M <= PANEL_H_M)
+    return (
+        0.0 <= ox
+        and ox + GRID_WIDTH_M <= PANEL_W_M
+        and 0.0 <= oy
+        and oy + GRID_HEIGHT_M <= PANEL_H_M
+    )
 
 
 def measure_key_area_origin(image, K, rvec, tvec):
-    """One frame's estimate of ``key_area_origin`` (board-frame metres), or
-    ``None`` when this frame's contour is not a plausible key grid.
+    """One frame's estimate of ``key_area_origin`` (board-frame metres).
 
+    Returns None when this frame's contour is not a plausible key grid.
     Trusts the detected rectangle's *centre*, not its edges, combined with
     the known extent: boxFilter + morphological closing systematically
     inflate the detected box by a roughly symmetric margin, which cancels
@@ -183,34 +217,35 @@ def measure_key_area_origin(image, K, rvec, tvec):
 
 
 class KeyProjector(Node):
-
     def __init__(self):
         super().__init__('key_projector')
-        self.declare_parameter(
-            'overlay_path', '/tmp/panel_detect/key_projection_validation.png')
+        self.declare_parameter('overlay_path', '/tmp/panel_detect/key_projection_validation.png')
 
-        self.K = None
-        self.D = None
-        self.rvec = None
-        self.tvec = None
+        self.K: Any = None
+        self.D: Any = None
+        self.rvec: Any = None
+        self.tvec: Any = None
+        self._pose_stamp = None  # source_stamp of the image the pose was fit from
         self.key_names = []
         self.key_points_board = None
         self._key_area_n = 0
         self._key_area_mean = np.zeros(2)
         self._key_area_m2 = np.zeros(2)  # Welford's running sum of squared deviations
+        self._last_origin = None  # key_area_origin as last published
         self._tf = Buffer(node=self)
         self._tf_listener = TransformListener(self._tf, self)
         self._pub_keys = self.create_publisher(KeyPositions, KEY_POSITIONS_TOPIC, UPDATES_QOS)
+        self._pub_pose = self.create_publisher(PoseStamped, PANEL_POSE_TOPIC, UPDATES_QOS)
 
         self.create_subscription(
-            CalibrationObservation, CALIBRATION_TOPIC, self._on_calibration, UPDATES_QOS)
-        self.create_subscription(
-            MarkerDetections, DETECTIONS_TOPIC, self._on_detections, 10)
-        self.create_subscription(
-            ImageObservation, IMAGE_TOPIC, self._on_image, UPDATES_QOS)
+            CalibrationObservation, CALIBRATION_TOPIC, self._on_calibration, UPDATES_QOS
+        )
+        self.create_subscription(MarkerDetections, DETECTIONS_TOPIC, self._on_detections, 10)
+        self.create_subscription(ImageObservation, IMAGE_TOPIC, self._on_image, UPDATES_QOS)
+        self.create_subscription(Empty, '/sim/done', self._on_episode_end, 10)
         self.get_logger().info(
-            f'calibration={CALIBRATION_TOPIC}; detections={DETECTIONS_TOPIC}; '
-            f'image={IMAGE_TOPIC}')
+            f'calibration={CALIBRATION_TOPIC}; detections={DETECTIONS_TOPIC}; image={IMAGE_TOPIC}'
+        )
 
     def _on_calibration(self, observation):
         if self.K is not None or not observation.status.valid:
@@ -235,25 +270,28 @@ class KeyProjector(Node):
         if len(obj_pts) != 16:
             return
 
-        obj_pts = np.array(obj_pts, dtype=np.float64)
-        img_pts = np.array(img_pts, dtype=np.float64)
-        ok, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, self.K, self.D)
+        obj = np.array(obj_pts, dtype=np.float64)
+        img = np.array(img_pts, dtype=np.float64)
+        ok, rvec, tvec = cv2.solvePnP(obj, img, self.K, self.D)
         if not ok:
-            self.get_logger().warning(
-                'solvePnP failed to converge', throttle_duration_sec=2.0)
+            self.get_logger().warning('solvePnP failed to converge', throttle_duration_sec=2.0)
             return
         self.rvec, self.tvec = rvec, tvec
+        self._pose_stamp = (msg.source_stamp.sec, msg.source_stamp.nanosec)
 
-        reprojected, _ = cv2.projectPoints(obj_pts, rvec, tvec, self.K, self.D)
-        errors = np.linalg.norm(reprojected.reshape(-1, 2) - img_pts, axis=1)
+        reprojected, _ = cv2.projectPoints(obj, rvec, tvec, self.K, self.D)
+        errors = np.linalg.norm(reprojected.reshape(-1, 2) - img, axis=1)
         self.get_logger().info(
             f'panel pose updated: reprojection error mean={errors.mean():.3f}px '
             f'max={errors.max():.3f}px',
-            throttle_duration_sec=2.0)
+            throttle_duration_sec=2.0,
+        )
 
     def _update_key_area_estimate(self, image):
-        """Fold one frame's key-grid measurement into the running estimate
-        and rebuild the keymap from it once enough frames agree."""
+        """Fold one frame's key-grid measurement into the running estimate.
+
+        Rebuilds the keymap from it once enough frames agree.
+        """
         measurement = measure_key_area_origin(image, self.K, self.rvec, self.tvec)
         if measurement is None:
             return
@@ -263,13 +301,18 @@ class KeyProjector(Node):
         self._key_area_mean += delta / self._key_area_n
         self._key_area_m2 += delta * (sample - self._key_area_mean)
         if self._key_area_n < MIN_MEASUREMENTS_TO_TRUST:
+            self.get_logger().info(
+                f'key grid not yet located ({self._key_area_n} measurements so far)',
+                throttle_duration_sec=5.0,
+            )
             return
         if self._key_area_n % LOG_EVERY_N_MEASUREMENTS < 1:
             std = np.sqrt(self._key_area_m2 / self._key_area_n)
             self.get_logger().info(
                 f'key_area_origin=({self._key_area_mean[0]:.4f}, '
                 f'{self._key_area_mean[1]:.4f}) m from {self._key_area_n} frames, '
-                f'std=({std[0]:.4f}, {std[1]:.4f}) m')
+                f'std=({std[0]:.4f}, {std[1]:.4f}) m'
+            )
         self._rebuild_keymap(tuple(self._key_area_mean))
 
     def _rebuild_keymap(self, key_area_origin):
@@ -284,31 +327,119 @@ class KeyProjector(Node):
         # (INTERFACES.md 4, 6.3), not a physical cap with height, so a key's
         # board-frame position needs no z offset.
         self.key_points_board = np.array(
-            [[*KeyMap.center(key), 0.0] for key in keymap.keys], dtype=np.float64)
+            [[*KeyMap.center(key), 0.0] for key in keymap.keys], dtype=np.float64
+        )
 
     @staticmethod
     def _quat_to_mat(q):
         x, y, z, w = q.x, q.y, q.z, q.w
-        return np.array([
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ])
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+
+    def _camera_still_since_pose(self, stamp):
+        """Check the camera has not moved since the pose frame.
+
+        Compares the world-from-camera TF at both times; at rest the two
+        viewpoints coincide and mixing pose/image frames is exact. While
+        the arm moves the gate closes and publishes pause until a fresh
+        4-marker fit arrives. A missing transform (extrapolation) is also
+        a closed gate.
+        """
+        from rclpy.time import Time
+
+        if self._pose_stamp is None:
+            return False
+        try:
+            pose_time = Time(seconds=self._pose_stamp[0], nanoseconds=self._pose_stamp[1])
+            now = self._tf.lookup_transform(
+                'world', 'camera_optical_frame', Time.from_msg(stamp)
+            ).transform.translation
+            then = self._tf.lookup_transform(
+                'world', 'camera_optical_frame', pose_time
+            ).transform.translation
+        except Exception:
+            return False
+        moved = math.dist((now.x, now.y, now.z), (then.x, then.y, then.z))
+        return moved <= 0.002
+
+    @staticmethod
+    def _mat_to_quat(matrix):
+        trace = float(matrix[0, 0] + matrix[1, 1] + matrix[2, 2])
+        if trace > 0.0:
+            scalar = np.sqrt(trace + 1.0) * 2.0
+            w = 0.25 * scalar
+            x = (matrix[2, 1] - matrix[1, 2]) / scalar
+            y = (matrix[0, 2] - matrix[2, 0]) / scalar
+            z = (matrix[1, 0] - matrix[0, 1]) / scalar
+        elif matrix[0, 0] > matrix[1, 1] and matrix[0, 0] > matrix[2, 2]:
+            scalar = np.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]) * 2.0
+            w = (matrix[2, 1] - matrix[1, 2]) / scalar
+            x = 0.25 * scalar
+            y = (matrix[0, 1] + matrix[1, 0]) / scalar
+            z = (matrix[0, 2] + matrix[2, 0]) / scalar
+        elif matrix[1, 1] > matrix[2, 2]:
+            scalar = np.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]) * 2.0
+            w = (matrix[0, 2] - matrix[2, 0]) / scalar
+            x = (matrix[0, 1] + matrix[1, 0]) / scalar
+            y = 0.25 * scalar
+            z = (matrix[1, 2] + matrix[2, 1]) / scalar
+        else:
+            scalar = np.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]) * 2.0
+            w = (matrix[1, 0] - matrix[0, 1]) / scalar
+            x = (matrix[0, 2] + matrix[2, 0]) / scalar
+            y = (matrix[1, 2] + matrix[2, 1]) / scalar
+            z = 0.25 * scalar
+        return (float(x), float(y), float(z), float(w))
 
     def _publish_world_keys(self, stamp):
-        """Board-frame key centres -> world, via solvePnP pose + TF."""
+        """Publish board-frame key centres and the panel pose in world.
+
+        Uses the solvePnP pose plus TF. Returns True when published.
+        """
+        # The panel is fixed within an episode, so once key_area_origin has
+        # stopped moving the world key positions carry no new information and
+        # only the per-frame pose noise changes. Going quiet is what lets a
+        # consumer tell "converged" from "still converging"; the latch still
+        # serves the last value to anyone subscribing late.
+        origin = self._key_area_mean.copy()
+        if (
+            self._last_origin is not None
+            and float(np.abs(origin - self._last_origin).max()) < ORIGIN_EPSILON_M
+        ):
+            return False
         R_cb, _ = cv2.Rodrigues(self.rvec)
         t_cb = self.tvec.reshape(3)
         try:
             lookup = self._tf.lookup_transform('world', 'camera_optical_frame', stamp)
         except Exception as error:
-            self.get_logger().warning(f'no world->camera transform: {error}', throttle_duration_sec=5.0)
-            return
+            self.get_logger().warning(
+                f'no world->camera transform: {error}', throttle_duration_sec=5.0
+            )
+            return False
         R_wc = self._quat_to_mat(lookup.transform.rotation)
         t = lookup.transform.translation
         t_wc = np.array([t.x, t.y, t.z])
+        R_wb = R_wc @ R_cb
+        t_wb = R_wc @ t_cb + t_wc
         pts_cam = (self.key_points_board @ R_cb.T) + t_cb
         pts_world = (pts_cam @ R_wc.T) + t_wc
+        pose = PoseStamped()
+        pose.header.stamp = stamp.to_msg() if hasattr(stamp, 'to_msg') else stamp
+        pose.header.frame_id = 'world'
+        x, y, z, w = self._mat_to_quat(R_wb)
+        pose.pose.position.x = float(t_wb[0])
+        pose.pose.position.y = float(t_wb[1])
+        pose.pose.position.z = float(t_wb[2])
+        pose.pose.orientation.x = x
+        pose.pose.orientation.y = y
+        pose.pose.orientation.z = z
+        pose.pose.orientation.w = w
+        self._pub_pose.publish(pose)
         msg = KeyPositions()
         msg.stamp = stamp.to_msg() if hasattr(stamp, 'to_msg') else stamp
         msg.frame_id = 'world'
@@ -316,7 +447,30 @@ class KeyProjector(Node):
         msg.x = [float(v) for v in pts_world[:, 0]]
         msg.y = [float(v) for v in pts_world[:, 1]]
         msg.z = [float(v) for v in pts_world[:, 2]]
+        # Board +Z points into the panel; the normal toward the arm is -Z.
+        msg.normal = [float(v) for v in -R_wb[:, 2]]
         self._pub_keys.publish(msg)
+        self._last_origin = origin
+        return True
+
+    def _on_episode_end(self, msg):
+        """Forget the key-grid estimate at the end of an episode.
+
+        The panel pose is resampled on every sim reset, so an estimate the
+        running mean converged on last episode is stale the moment /sim/done
+        publishes. Clearing forces reconvergence (first publishes withheld
+        until MIN_MEASUREMENTS_TO_TRUST agree) instead of publishing one
+        stale latched KeyPositions the typist would type from. The pose
+        itself is kept: it is only replaced by a fresh 4-marker fit, and
+        the stamp gate in _on_image refuses to mix it with another frame.
+        """
+        del msg
+        self._key_area_n = 0
+        self._key_area_mean = np.zeros(2)
+        self._key_area_m2 = np.zeros(2)
+        self.key_points_board = None
+        self._pose_stamp = None
+        self._last_origin = None
 
     def _on_image(self, observation):
         status = observation.status
@@ -325,39 +479,66 @@ class KeyProjector(Node):
         try:
             image = detector.decode(observation)
         except ValueError as error:
-            self.get_logger().warning(
-                f'undecodable frame: {error}', throttle_duration_sec=5.0)
+            self.get_logger().warning(f'undecodable frame: {error}', throttle_duration_sec=5.0)
             return
 
         self._update_key_area_estimate(image)
         if self.key_points_board is None:
-            self.get_logger().info(
-                f'key grid not yet located ({self._key_area_n} measurements so far)',
-                throttle_duration_sec=5.0)
             return
 
         from rclpy.time import Time
 
         source = observation.status
         stamp = source.source_stamp if source.has_source_stamp else source.received_stamp
-        self._publish_world_keys(Time.from_msg(stamp))
+        if self._pose_stamp != (stamp.sec, stamp.nanosec):
+            # The pose was fit from a different frame than this image (the
+            # detections and image subscriptions race; depth-10 vs latest).
+            # Transforming this image's board points with that pose mixes
+            # two camera viewpoints. Withhold unless the camera is still
+            # (TF has barely moved since the pose frame): at rest the two
+            # viewpoints coincide and the publish is exact.
+            if not self._camera_still_since_pose(stamp):
+                self.get_logger().info(
+                    'withholding key positions: pose is not from this image',
+                    throttle_duration_sec=5.0,
+                )
+                return
+        if self._publish_world_keys(Time.from_msg(stamp)):
+            self.get_logger().info(
+                f'published key positions from {self._key_area_n} measurements',
+                throttle_duration_sec=5.0,
+            )
 
         image_points, _ = cv2.projectPoints(
-            self.key_points_board, self.rvec, self.tvec, self.K, self.D)
+            self.key_points_board, self.rvec, self.tvec, self.K, self.D
+        )
         overlay = image.copy()
         for name, point in zip(self.key_names, image_points.reshape(-1, 2)):
             u, v = int(round(point[0])), int(round(point[1]))
             if 0 <= u < overlay.shape[1] and 0 <= v < overlay.shape[0]:
                 cv2.circle(overlay, (u, v), 3, KEY_POINT_COLOR, -1)
                 cv2.putText(
-                    overlay, name, (u + 4, v - 4), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.35, KEY_POINT_COLOR, 1, cv2.LINE_AA)
+                    overlay,
+                    name,
+                    (u + 4, v - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35,
+                    KEY_POINT_COLOR,
+                    1,
+                    cv2.LINE_AA,
+                )
         std = np.sqrt(self._key_area_m2 / self._key_area_n)
         cv2.putText(
             overlay,
             f'key_area_origin=({self._key_area_mean[0]:.4f},{self._key_area_mean[1]:.4f})m '
             f'n={self._key_area_n} std=({std[0]:.4f},{std[1]:.4f})m',
-            (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.45, BANNER_COLOR, 1, cv2.LINE_AA)
+            (10, 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            BANNER_COLOR,
+            1,
+            cv2.LINE_AA,
+        )
 
         path = self.get_parameter('overlay_path').value
         os.makedirs(os.path.dirname(path), exist_ok=True)
