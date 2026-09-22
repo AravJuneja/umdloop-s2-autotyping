@@ -38,8 +38,8 @@ Corners are reported in the order the marker is **printed** — its own
 top-left, top-right, bottom-right, bottom-left — not in the order they
 happen to land in the image. OpenCV rotates the quad to match the decoded
 orientation, so a marker seen upside down still reports its printed top-left
-first and the correspondence with the board-frame table in the challenge
-spec holds without a second guess.
+first and the correspondence with the board-frame table in
+`sim/docs/INTERFACES.md` 6.1 holds without a second guess.
 
 ## How precise the corners are
 
@@ -61,7 +61,7 @@ of a pixel — that is the "side bias" column, and roughly half a pixel of it
 is a convention difference about where a corner is rather than an error.
 It cancels at the centre, which is why the centre is the column that
 decides. It also matters less than it looks to a four-marker board fit: the
-board's scale comes from the ~450 px between markers, not from the 21 px
+board's scale comes from the ~150 px between the closest pair of markers and the ~400 px across the panel, not from the 21 px
 across one. Contour refinement wins the centre by a factor of 1.6 over
 sub-pixel; AprilTag is the only one that gets the outline right and the only
 one that moves the centre.

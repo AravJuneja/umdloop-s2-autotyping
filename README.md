@@ -91,9 +91,9 @@ See `sim/docs/INFO.md` for the full simulator setup/reference and
 - [x] Read the launch key from /sim/launch_key
 - [x] Control the arm in closed loop from /joint_states, within its joint and velocity limits.
 - [x] Determine the panel's position and orientation from the camera image.
-- [x] Determine where the keys of the launch key are. Key positions are not provided
-- [x] Move the arm to a pose from which every character of the launch key can be pressed
-- [x] Aim at and press each character in order, then publish /sim/done
-- [x] type the launch key exactly, so /sim/result reports an exact match
-- [x] work on any episode seed without code changes. The panel's placement changes between episodes.
-- [ ] record detections, pose estimates, commands, and press decisions in an exportable log 
+- [x] Determine where the keys of the launch key are.
+- [x] Move the arm to a pose from which every character of the launch key can be pressed.
+- [x] Aim at and press each character in order, then publish /sim/done.
+- [x] Type the launch key exactly, so /sim/result reports an exact match
+- [x] Work on any episode seed without code changes. The panel's placement changes between episodes.
+- [x] Record detections, pose estimates, commands, and press decisions in an exportable log (via scripts/demo.sh)

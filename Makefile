@@ -1,4 +1,4 @@
-.PHONY: up e2e e2e-codes down logs check test ci ci-clean stats demo
+.PHONY: up e2e e2e-codes down logs check ci ci-clean stats demo
 
 # Self-contained one-liners. Everything runs through the `dev` container,
 # which already has ROS, the sim messages, and this workspace mounted at
@@ -46,18 +46,6 @@ stats:
 demo:
 	./start.sh
 	./scripts/demo.sh $(N)
-
-check:
-	cd sim && docker compose exec -T dev bash -lc '\
-	  source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash && \
-	  cd /ws && python3 -m pytest src/robot_state/test -q && \
-	  python3 -m pytest src/panel_detect/test -q'
-
-test:
-	cd sim && docker compose exec -T dev bash -lc '\
-	  source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash && \
-	  cd /ws && python3 -m pytest src/robot_state/test -q && \
-	  python3 -m pytest src/panel_detect/test -q'
 
 e2e:
 	./start.sh
