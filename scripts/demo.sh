@@ -38,7 +38,7 @@ codes="$(bash "$REPO/gen_codes.sh" "$RUNS")"
 now() { date +%s.%N; }
 since() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f", b - a }'; }
 
-echo "Dashboard: http://localhost:8080   (open it now, before the first run)"
+echo "Dashboard: http://localhost:8080   (available during each run; stack tears down on exit)"
 echo "Runs: $RUNS"
 echo
 
